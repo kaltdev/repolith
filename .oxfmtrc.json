@@ -1,0 +1,13 @@
+{
+  "printWidth": 100,
+  "tabWidth": 8,
+  "useTabs": true,
+  "semi": true,
+  "singleQuote": false,
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "sortImports": true,
+  "sortTailwindcssClasses": true
+}

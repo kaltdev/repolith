@@ -1,0 +1,57 @@
+{
+	"name": "@better-hub/monorepo",
+	"private": true,
+	"description": "A better place to collaborate on code — for humans and agents",
+	"keywords": [
+		"ai-assistant",
+		"better-auth",
+		"code-review",
+		"developer-tools",
+		"github",
+		"pull-requests"
+	],
+	"homepage": "https://repolith.com",
+	"bugs": {
+		"url": "https://github.com/better-auth/better-hub/issues"
+	},
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/better-auth/better-hub.git"
+	},
+	"type": "module",
+	"scripts": {
+		"go": "pnpm run",
+		"build": "pnpm -r run build",
+		"dev": "pnpm -r run dev -p 8080",
+		"lint": "oxlint apps packages",
+		"lint:fix": "oxlint --fix apps packages",
+		"fmt": "oxfmt --ignore-path .oxfmtignore apps packages *.json *.yaml",
+		"fmt:check": "oxfmt --ignore-path .oxfmtignore --check apps packages *.json *.yaml",
+		"typecheck": "pnpm -r exec tsc --noEmit",
+		"check": "pnpm lint && pnpm fmt:check && pnpm typecheck",
+		"fix": "pnpm lint:fix && pnpm fmt",
+		"prepare": "simple-git-hooks"
+	},
+	"devDependencies": {
+		"@types/node": "^25.3.0",
+		"lint-staged": "^16.2.7",
+		"oxfmt": "^0.34.0",
+		"oxlint": "^1.43.0",
+		"simple-git-hooks": "^2.13.1",
+		"typescript": "^5.7.0"
+	},
+	"simple-git-hooks": {
+		"pre-commit": "pnpm lint-staged"
+	},
+	"lint-staged": {
+		"*.{ts,tsx,js,jsx}": [
+			"oxfmt --write",
+			"oxlint --fix"
+		],
+		"*.json": [
+			"oxfmt --write"
+		]
+	},
+	"packageManager": "pnpm@10.10.0"
+}

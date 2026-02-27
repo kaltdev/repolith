@@ -1,0 +1,14 @@
+node_modules
+**/node_modules/**
+dist
+**/dist/**
+.git
+**/.git/**
+.next
+**/.next/**
+generated
+**/generated/**
+apps/web/src/generated/**
+*.config.js
+*.config.cjs
+*.config.mjs

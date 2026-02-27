@@ -1,0 +1,100 @@
+import { anthropic } from "@ai-sdk/anthropic";
+import { generateText } from "ai";
+import { auth } from "@/lib/auth";
+import { getErrorMessage } from "@/lib/utils";
+import { headers } from "next/headers";
+import { checkAiLimit, incrementAiUsage } from "@/lib/ai-usage";
+
+export async function POST(req: Request) {
+	const session = await auth.api.getSession({ headers: await headers() });
+	if (!session?.user?.id) {
+		return new Response("Unauthorized", { status: 401 });
+	}
+
+	// Check AI message limit
+	const { allowed, current, limit } = await checkAiLimit(session.user.id);
+	if (!allowed) {
+		return new Response(
+			JSON.stringify({ error: "MESSAGE_LIMIT_REACHED", current, limit }),
+			{ status: 429, headers: { "Content-Type": "application/json" } },
+		);
+	}
+	await incrementAiUsage(session.user.id);
+
+	const body = await req.json();
+	const model = anthropic("claude-haiku-4-5-20251001");
+
+	if (body.mode === "squash") {
+		const { prTitle, prBody, prNumber, commits } = body;
+		if (!prTitle) {
+			return Response.json({ error: "Missing prTitle" }, { status: 400 });
+		}
+
+		const commitList = (commits || [])
+			.slice(0, 30)
+			.map((c: string) => `- ${c}`)
+			.join("\n");
+
+		try {
+			const { text } = await generateText({
+				model,
+				system: "Generate a concise squash merge commit message for a pull request using Conventional Commits format. Output two parts separated by a blank line: 1) A single-line title using a conventional commit prefix (feat:, fix:, refactor:, docs:, chore:, perf:, test:, ci:, style:, build:) followed by a short description, max 72 chars, with the PR number like (#123) at the end. 2) A brief description (2-4 bullet points summarizing the key changes). Only output the commit message, nothing else.",
+				prompt: `PR #${prNumber}: ${prTitle}\n\n${prBody ? `Description:\n${prBody}\n\n` : ""}Commits:\n${commitList}`,
+			});
+
+			const lines = text.trim().split("\n");
+			const title = lines[0] || `${prTitle} (#${prNumber})`;
+			const description = lines.slice(1).join("\n").trim();
+
+			return Response.json({ title, description });
+		} catch (e: unknown) {
+			return Response.json(
+				{
+					error:
+						getErrorMessage(e) ||
+						"Failed to generate commit message",
+				},
+				{ status: 500 },
+			);
+		}
+	}
+
+	const { filename, originalContent, newContent } = body;
+	if (!filename || originalContent == null || newContent == null) {
+		return Response.json({ error: "Missing fields" }, { status: 400 });
+	}
+
+	const oldLines = originalContent.split("\n");
+	const newLines = newContent.split("\n");
+	const diffLines: string[] = [];
+	const maxLen = Math.max(oldLines.length, newLines.length);
+	for (let i = 0; i < maxLen; i++) {
+		const oldLine = oldLines[i];
+		const newLine = newLines[i];
+		if (oldLine === newLine) continue;
+		if (oldLine !== undefined && newLine !== undefined) {
+			diffLines.push(`-${oldLine}`);
+			diffLines.push(`+${newLine}`);
+		} else if (oldLine !== undefined) {
+			diffLines.push(`-${oldLine}`);
+		} else {
+			diffLines.push(`+${newLine}`);
+		}
+	}
+	const diff = diffLines.slice(0, 100).join("\n");
+
+	try {
+		const { text } = await generateText({
+			model,
+			system: "Generate a concise git commit message for the following file change using Conventional Commits format. Use a prefix like feat:, fix:, refactor:, docs:, chore:, perf:, test:, ci:, style:, or build: followed by a short description. Single line, imperative mood, max 72 characters. Only output the commit message, nothing else.",
+			prompt: `File: ${filename}\n\nDiff:\n${diff}`,
+		});
+
+		return Response.json({ message: text.trim() });
+	} catch (e: unknown) {
+		return Response.json(
+			{ error: getErrorMessage(e) || "Failed to generate commit message" },
+			{ status: 500 },
+		);
+	}
+}

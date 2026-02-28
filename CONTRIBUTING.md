@@ -13,8 +13,8 @@ Thanks for your interest in contributing! This guide covers what you need to get
 
 ```bash
 # 1. Clone the repo
-git clone https://github.com/better-auth/better-hub.git
-cd better-hub
+git clone https://github.com/better-auth/repolith.git
+cd repolith
 
 # 2. Use the repo Node version
 nvm use
@@ -79,7 +79,7 @@ Prefix with `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`, or `test:`.
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/better-auth/better-hub/issues) to report bugs or suggest features. Include steps to reproduce for bugs.
+Use [GitHub Issues](https://github.com/better-auth/repolith/issues) to report bugs or suggest features. Include steps to reproduce for bugs.
 
 ## Security
 

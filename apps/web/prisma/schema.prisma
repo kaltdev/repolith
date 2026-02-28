@@ -12,7 +12,6 @@ model User {
   id             String   @id
   name           String
   email          String
-  githubLogin    String?
   githubPat      String?
   onboardingDone Boolean  @default(false)
   emailVerified  Boolean
@@ -170,7 +169,8 @@ model UserSettings {
   userId           String  @id
   displayName      String?
   theme            String  @default("system")
-  colorTheme       String  @default("midnight")
+  colorTheme       String  @default("better-auth")
+  colorMode        String  @default("dark")
   ghostModel       String  @default("auto")
   useOwnApiKey     Boolean @default(false)
   openrouterApiKey String?

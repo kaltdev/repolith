@@ -109,7 +109,7 @@ export const patSignIn = (): BetterAuthPlugin => ({
 					} as Record<string, unknown>);
 				}
 
-				// --- Create session + set cookie via Kalt Labs ---
+				// --- Create session + set cookie via Better Auth ---
 				const session = await internalAdapter.createSession(userId, false);
 				const user =
 					existing?.user ??

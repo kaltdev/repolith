@@ -5,6 +5,7 @@ import {
 	getRepo,
 	getCrossReferences,
 	getAuthenticatedUser,
+	extractRepoPermissions,
 } from "@/lib/github";
 import { ogImageUrl, ogImages } from "@/lib/og/og-utils";
 import { extractParticipants } from "@/lib/github-utils";
@@ -20,6 +21,7 @@ import { IssueParticipants } from "@/components/issue/issue-participants";
 import { TrackView } from "@/components/shared/track-view";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { inngest } from "@/lib/inngest";
 import { isItemPinned } from "@/lib/pinned-items-store";
 
@@ -43,6 +45,9 @@ export async function generateMetadata({
 
 	if (!issue) {
 		return { title: `Issue #${issueNumber} · ${owner}/${repo}` };
+	}
+	if ((issue as { pull_request?: unknown }).pull_request != null) {
+		redirect(`/${owner}/${repo}/pulls/${issueNumber}`);
 	}
 
 	return {
@@ -82,6 +87,9 @@ export default async function IssueDetailPage({
 				</p>
 			</div>
 		);
+	}
+	if ((issue as { pull_request?: unknown }).pull_request != null) {
+		redirect(`/${owner}/${repo}/pulls/${issueNumber}`);
 	}
 
 	// Start pin check in parallel with markdown rendering
@@ -142,6 +150,17 @@ export default async function IssueDetailPage({
 	]);
 	const issuePinned = await pinnedPromise;
 
+	// Determine permissions and user state
+	const permissions = extractRepoPermissions(repoData ?? {});
+	const currentUserLogin = (currentUser as { login?: string } | null)?.login;
+	const isAuthor = currentUserLogin === issue.user?.login && currentUserLogin != null;
+	const viewerHasWriteAccess = permissions.push || permissions.maintain || permissions.admin;
+	const canTriage = viewerHasWriteAccess || permissions.triage;
+
+	const canEditIssue = !!(currentUserLogin && (isAuthor || viewerHasWriteAccess));
+	const canClose = canTriage || isAuthor;
+	const canReopen = canTriage;
+
 	const commentsWithHtml: IssueComment[] = (comments || []).map((c, i) => ({
 		...c,
 		bodyHtml: commentHtmls[i],
@@ -157,6 +176,7 @@ export default async function IssueDetailPage({
 		reactions:
 			(issue as { reactions?: Record<string, unknown> }).reactions ?? undefined,
 	};
+
 	// Extract participants
 	const participants = extractParticipants([
 		issue.user ? { login: issue.user.login, avatar_url: issue.user.avatar_url } : null,
@@ -207,6 +227,10 @@ export default async function IssueDetailPage({
 						issueNumber={issueNumber}
 						initialComments={commentsWithHtml}
 						descriptionEntry={descriptionEntry}
+						canEdit={canEditIssue}
+						issueTitle={issue.title}
+						currentUserLogin={currentUserLogin}
+						viewerHasWriteAccess={viewerHasWriteAccess}
 					/>
 				}
 				commentForm={
@@ -215,6 +239,8 @@ export default async function IssueDetailPage({
 						repo={repo}
 						issueNumber={issueNumber}
 						issueState={issue.state}
+						canClose={canClose}
+						canReopen={canReopen}
 						userAvatarUrl={
 							(
 								currentUser as {

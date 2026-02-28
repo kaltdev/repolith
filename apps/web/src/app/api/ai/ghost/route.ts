@@ -27,7 +27,7 @@ import {
 } from "@/lib/github";
 import Supermemory from "supermemory";
 
-export const maxDuration = 800;
+export const maxDuration = 300;
 
 // ─── Model Config ───────────────────────────────────────────────────────────
 // Central config for "auto" mode. Swap models here — no other changes needed.
@@ -368,7 +368,10 @@ function getGeneralTools(octokit: Octokit, pageContext?: PageContext, userId?: s
 				repo: z.string().describe("Repository name"),
 			}),
 			execute: async ({ owner, repo }) => {
-				const { data } = await octokit.repos.createFork({ owner, repo });
+				const { data } = await octokit.repos.createFork({
+					owner,
+					repo,
+				});
 				return {
 					success: true,
 					action: "forked",
@@ -574,7 +577,9 @@ function getGeneralTools(octokit: Octokit, pageContext?: PageContext, userId?: s
 				username: z.string().describe("GitHub username"),
 			}),
 			execute: async ({ username }) => {
-				const { data } = await octokit.users.getByUsername({ username });
+				const { data } = await octokit.users.getByUsername({
+					username,
+				});
 				return {
 					login: data.login,
 					name: data.name,
@@ -1800,7 +1805,10 @@ function buildPrSystemPrompt(
 			priorityDiffs.push(`### ${f.filename}\n\`\`\`diff\n${f.patch}\n\`\`\``);
 			diffCharsUsed += f.patch.length;
 		} else {
-			otherFiles.push({ filename: f.filename, patchLen: f.patch?.length ?? 0 });
+			otherFiles.push({
+				filename: f.filename,
+				patchLen: f.patch?.length ?? 0,
+			});
 		}
 	}
 
@@ -3064,8 +3072,15 @@ export async function POST(req: Request) {
 		const { allowed, current, limit } = await checkAiLimit(userId);
 		if (!allowed) {
 			return new Response(
-				JSON.stringify({ error: "MESSAGE_LIMIT_REACHED", current, limit }),
-				{ status: 429, headers: { "Content-Type": "application/json" } },
+				JSON.stringify({
+					error: "MESSAGE_LIMIT_REACHED",
+					current,
+					limit,
+				}),
+				{
+					status: 429,
+					headers: { "Content-Type": "application/json" },
+				},
 			);
 		}
 		// Increment on request start (before streaming) to prevent gaming by canceling

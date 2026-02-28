@@ -40,15 +40,9 @@ const nextConfig: NextConfig = {
 			{ protocol: "https", hostname: "github.com" },
 			{ protocol: "https", hostname: "opengraph.githubassets.com" },
 			{ protocol: "https", hostname: "raw.githubusercontent.com" },
-			{
-				protocol: "https",
-				hostname: "user-images.githubusercontent.com",
-			},
-			{
-				protocol: "https",
-				hostname: "repository-images.githubusercontent.com",
-			},
-			{ protocol: "https", hostname: "repolith.my.id" },
+			{ protocol: "https", hostname: "user-images.githubusercontent.com" },
+			{ protocol: "https", hostname: "repository-images.githubusercontent.com" },
+			{ protocol: "https", hostname: "repolith.com" },
 			{ protocol: "https", hostname: "images.better-auth.com" },
 		],
 	},
@@ -99,7 +93,7 @@ export default withSentryConfig(nextConfig, {
 	// For all available options, see:
 	// https://www.npmjs.com/package/@sentry/webpack-plugin#options
 
-	org: "better-hub",
+	org: "repolith",
 
 	project: "javascript-nextjs",
 

@@ -6,7 +6,7 @@ Re-imagining code collaboration — a better place to collaborate on code, for h
 
 ## Why
 
-At Kalt Labs, we spend a lot of our time on GitHub. So we decided to build the experience we actually wanted. Repolith improves everything from the home page to repo overview, PR reviews, and AI integration — faster and more pleasant overall.
+At Better Auth, we spend a lot of our time on GitHub. So we decided to build the experience we actually wanted. Repolith improves everything from the home page to repo overview, PR reviews, and AI integration — faster and more pleasant overall.
 
 ## Features
 

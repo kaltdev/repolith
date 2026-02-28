@@ -1,5 +1,5 @@
 {
-	"name": "@better-hub/monorepo",
+	"name": "@repolith/monorepo",
 	"private": true,
 	"description": "A better place to collaborate on code — for humans and agents",
 	"keywords": [
@@ -10,20 +10,20 @@
 		"github",
 		"pull-requests"
 	],
-	"homepage": "https://repolith.my.id",
+	"homepage": "https://repolith.com",
 	"bugs": {
-		"url": "https://github.com/better-auth/better-hub/issues"
+		"url": "https://github.com/better-auth/repolith/issues"
 	},
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/better-auth/better-hub.git"
+		"url": "https://github.com/better-auth/repolith.git"
 	},
 	"type": "module",
 	"scripts": {
 		"go": "pnpm run",
 		"build": "pnpm -r run build",
-		"dev": "pnpm -r run dev -p 8080",
+		"dev": "pnpm -r run dev",
 		"lint": "oxlint apps packages",
 		"lint:fix": "oxlint --fix apps packages",
 		"fmt": "oxfmt --ignore-path .oxfmtignore apps packages *.json *.yaml",

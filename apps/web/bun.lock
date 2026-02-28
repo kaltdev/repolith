@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "@better-hub/web",
+      "name": "@repolith/web",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.44",
         "@ai-sdk/react": "^3.0.99",

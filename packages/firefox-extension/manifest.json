@@ -5,7 +5,7 @@
 	"description": "Redirect GitHub pages to your Repolith instance",
 	"browser_specific_settings": {
 		"gecko": {
-			"id": "better-hub@extension",
+			"id": "repolith@extension",
 			"strict_min_version": "109.0"
 		}
 	},

@@ -91,6 +91,8 @@ export const auth = betterAuth({
         "https://www.repolith.my.id",
         // Vercel preview
         "https://repolith-*-better-auth.vercel.app",
+        // Beta socialProviders
+        "https://beta.repolith.my.id",
     ],
 });
 

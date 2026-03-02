@@ -9,7 +9,7 @@ import { checkUsageLimit } from "@/lib/billing/usage-limit";
 import { getBillingErrorCode } from "@/lib/billing/config";
 import { logTokenUsage } from "@/lib/billing/token-usage";
 import { waitUntil } from "@vercel/functions";
-import { getInternalModel } from "@/lib/billing/ai-model.server";
+import { getInternalModel } from "@/lib/billing/ai-models.server";
 
 export const maxDuration = 60;
 

@@ -114,13 +114,19 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 	const { data: subscriptions } = useQuery({
 		queryKey: ["billing-subscriptions"],
 		queryFn: async () => {
-			const res = await authClient.subscription.list({});
-			return res.data ?? [];
+			try {
+				const res = await authClient.subscription.list({});
+				return res.data ?? [];
+			} catch {
+				// Stripe plugin not loaded (no STRIPE_SECRET_KEY) — endpoint doesn't exist
+				return [];
+			}
 		},
 		staleTime: 30_000,
 		gcTime: 5 * 60_000,
 		refetchOnMount: "always",
 		refetchOnWindowFocus: "always",
+		retry: false,
 	});
 
 	const queryClient = useQueryClient();
@@ -143,9 +149,16 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 
 	const restoreMutation = useMutation({
 		mutationFn: async () => {
-			const res = await authClient.subscription.restore({});
-			if (res.error) throw new Error(res.error.message ?? "Failed to restore");
-			return res.data;
+			try {
+				const res = await authClient.subscription.restore({});
+				if (res.error)
+					throw new Error(res.error.message ?? "Failed to restore");
+				return res.data;
+			} catch (e) {
+				throw e instanceof Error
+					? e
+					: new Error("Failed to restore subscription");
+			}
 		},
 		onSuccess: () => invalidateBilling(),
 	});
@@ -244,22 +257,30 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 	const [selectedGateway, setSelectedGateway] = useState<PaymentGateway>("polar");
 
 	async function handleSubscribe() {
-		const res = await authClient.subscription.upgrade({
-			plan: "base",
-			successUrl: window.location.href,
-			cancelUrl: window.location.href,
-		});
-		if (res.data?.url) {
-			window.location.href = res.data.url;
+		try {
+			const res = await authClient.subscription.upgrade({
+				plan: "base",
+				successUrl: window.location.href,
+				cancelUrl: window.location.href,
+			});
+			if (res.data?.url) {
+				window.location.href = res.data.url;
+			}
+		} catch {
+			console.error("[billing] Stripe subscription upgrade not available");
 		}
 	}
 
 	async function handlePolarCheckout() {
-		const res = await (authClient as any).polar.checkout({
-			productId: "base",
-		});
-		if (res.data?.url) {
-			window.location.href = res.data.url;
+		try {
+			const res = await (authClient as any).polar.checkout({
+				productId: "base",
+			});
+			if (res.data?.url) {
+				window.location.href = res.data.url;
+			}
+		} catch {
+			console.error("[billing] Polar checkout not available");
 		}
 	}
 
@@ -273,9 +294,13 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 	}
 
 	async function handlePolarPortal() {
-		const res = await (authClient as any).polar.customerPortal();
-		if (res.data?.url) {
-			window.location.href = res.data.url;
+		try {
+			const res = await (authClient as any).polar.customerPortal();
+			if (res.data?.url) {
+				window.location.href = res.data.url;
+			}
+		} catch {
+			console.error("[billing] Polar customer portal not available");
 		}
 	}
 

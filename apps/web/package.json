@@ -87,6 +87,7 @@
 		"@types/pg": "^8.16.0",
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
+		"babel-plugin-react-compiler": "^1.0.0",
 		"tailwindcss": "^4"
 	}
 }

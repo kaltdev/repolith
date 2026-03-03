@@ -3372,9 +3372,11 @@ export async function POST(req: Request) {
 	}
 
 	const modelId = resolveModel(userModelChoice, taskType);
+	const isAutoSelectedModel = userModelChoice === "auto";
 
-	// Custom models (not in MODEL_PRICING) require the user's own API key.
-	if (!isCustomApiKey && !hasModelPricing(modelId)) {
+	// Only explicit user-selected custom models require BYOK.
+	// Server-configured auto defaults are allowed to use the server API key.
+	if (!isCustomApiKey && !hasModelPricing(modelId) && !isAutoSelectedModel) {
 		return new Response(
 			JSON.stringify({
 				error: "Custom models require your own OpenRouter API key. Please add your API key in AI settings.",

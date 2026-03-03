@@ -227,12 +227,7 @@ export async function updateActiveStreamId(
 
 export async function saveMessages(
 	conversationId: string,
-	messages: {
-		id: string;
-		role: string;
-		content: string;
-		partsJson?: string;
-	}[],
+	messages: { id: string; role: string; content: string; partsJson?: string }[],
 ): Promise<void> {
 	const now = new Date().toISOString();
 

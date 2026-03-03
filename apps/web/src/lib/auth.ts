@@ -34,9 +34,15 @@ async function getOctokitUser(token: string) {
 }
 
 export const auth = betterAuth({
+	appName: "Repolith",
 	database: prismaAdapter(prisma, {
 		provider: "postgresql",
 	}),
+	experimental: {
+		// Enable to test the new session store based on Prisma instead of Redis.
+		// Note: Prisma sessions don't support the cookie cache, so we disable it when enabled.
+		joins: true,
+	},
 	plugins: [
 		dash({
 			activityTracking: {
@@ -161,16 +167,22 @@ export const auth = betterAuth({
 		cookieCache: {
 			enabled: true,
 			maxAge: 60 * 60 * 24 * 7,
+			strategy: "jwe",
 		},
 	},
 	trustedOrigins: [
 		// Production
-		"https://www.better-hub.com",
+		"https://www.repolith.my.id",
 		// Vercel preview
-		"https://better-hub-*-better-auth.vercel.app",
+		"https://repolith-*-repolith.vercel.app",
 		// Beta site
-		"https://beta.better-hub.com",
+		"https://beta.repolith.my.id",
 	],
+	advanced: {
+		ipAddress: {
+			ipAddressHeaders: ["x-vercel-forwarded-for", "x-forwarded-for"],
+		},
+	},
 });
 
 export const getServerSession = cache(async () => {

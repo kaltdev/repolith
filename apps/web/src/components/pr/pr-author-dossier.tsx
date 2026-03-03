@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
 import type { ScoreResult } from "@/lib/contributor-score";
 import { UserTooltip } from "@/components/shared/user-tooltip";
+import { XIcon } from "../shared/icons/x-icon";
 
 interface AuthorOrg {
 	login: string;
@@ -117,21 +118,16 @@ function scoreLabel(total: number): string {
 	return "New contributor";
 }
 
-function XIcon({ className }: { className?: string }) {
-	return (
-		<svg viewBox="0 0 24 24" className={className} fill="currentColor">
-			<path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-		</svg>
-	);
-}
-
 /** Circular score ring */
 function ScoreRing({ score }: { score: ScoreResult }) {
 	const radius = 14;
 	const circumference = 2 * Math.PI * radius;
 	const progress = (score.total / 100) * circumference;
 	const triggerRef = useRef<HTMLDivElement>(null);
-	const [tooltipPos, setTooltipPos] = useState<{ top: number; left: number } | null>(null);
+	const [tooltipPos, setTooltipPos] = useState<{
+		top: number;
+		left: number;
+	} | null>(null);
 
 	const handleMouseEnter = useCallback(() => {
 		if (triggerRef.current) {

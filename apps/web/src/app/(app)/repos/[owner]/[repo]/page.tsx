@@ -22,7 +22,7 @@ export async function generateMetadata({
 	const ogUrl = ogImageUrl({ type: "repo", owner, repo });
 	return {
 		title: `${owner}/${repo}`,
-		description: `View ${owner}/${repo} on Repolith`,
+		description: `View ${owner}/${repo} on Better Hub`,
 		openGraph: { title: `${owner}/${repo}`, ...ogImages(ogUrl) },
 		twitter: { card: "summary_large_image", ...ogImages(ogUrl) },
 	};
@@ -42,9 +42,10 @@ export default async function RepoPage({
 
 	const { repoData, navCounts } = pageDataResult.data;
 	const { permissions } = repoData;
-	const isMaintainer = permissions.push || permissions.admin || permissions.maintain;
 
-	// Cache data is opaque to the server — passed through as initialData to client useQuery hooks
+	const isMaintainer = permissions.push || permissions.admin || permissions.maintain;
+	const isEmptyRepo = repoData.size === 0;
+
 	const [
 		readmeHtml,
 		initialPRs,
@@ -54,7 +55,7 @@ export default async function RepoPage({
 		initialCIStatus,
 		initialPinnedItems,
 	] = (await Promise.all([
-		revalidateReadme(owner, repo, repoData.default_branch),
+		isEmptyRepo ? null : revalidateReadme(owner, repo, repoData.default_branch),
 		isMaintainer ? getCachedOverviewPRs(owner, repo) : null,
 		isMaintainer ? getCachedOverviewIssues(owner, repo) : null,
 		isMaintainer ? getCachedOverviewEvents(owner, repo) : null,

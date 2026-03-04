@@ -38,11 +38,13 @@ export default async function CodePage({
 	if (!repoData) return null;
 
 	const defaultBranch = repoData.default_branch;
-
+	const isEmptyRepo = repoData.size === 0;
 	const [branches, tags, contents, openPRs, closedPRs] = await Promise.all([
 		branchesPromise,
 		tagsPromise,
-		getRepoContents(owner, repo, "", defaultBranch),
+		isEmptyRepo
+			? Promise.resolve([]) // If repo is empty, skip fetching contents
+			: getRepoContents(owner, repo, "", defaultBranch),
 		getRepoPullRequests(owner, repo, "open"),
 		getRepoPullRequests(owner, repo, "closed"),
 	]);

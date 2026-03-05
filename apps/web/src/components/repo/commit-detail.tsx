@@ -536,6 +536,13 @@ function FileHeader({
 	onNext: () => void;
 }) {
 	const Icon = getFileIcon(file.status);
+	const [copiedPath, setCopiedPath] = useState(false);
+
+	const copyFilePath = () => {
+		navigator.clipboard.writeText(file.filename);
+		setCopiedPath(true);
+		setTimeout(() => setCopiedPath(false), 2000);
+	};
 
 	return (
 		<div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border bg-card/50">
@@ -561,6 +568,21 @@ function FileHeader({
 				<span className="text-[10px] font-mono text-destructive">
 					-{file.deletions}
 				</span>
+
+				<button
+					onClick={copyFilePath}
+					title="Copy file path"
+					className="px-1.5 py-1 rounded transition-colors cursor-pointer text-muted-foreground hover:text-info"
+				>
+					<span className="inline-flex items-center gap-1 text-[10px] font-mono">
+						{copiedPath ? (
+							<Check className="w-3.5 h-3.5 text-info" />
+						) : (
+							<Copy className="w-3.5 h-3.5" />
+						)}
+						{copiedPath ? "Copied!" : "Path"}
+					</span>
+				</button>
 
 				<button
 					onClick={onToggleWrap}

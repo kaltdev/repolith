@@ -36,11 +36,11 @@ export const metadata: Metadata = {
 		default: "Repolith",
 		template: "%s | Repolith",
 	},
-	description: "Re-imagining code collaboration for humans and agents.",
+	description: "Built for Humans. Ready for Agents.",
 	metadataBase: new URL(siteUrl),
 	openGraph: {
 		title: "Repolith",
-		description: "Re-imagining code collaboration for humans and agents.",
+		description: "Built for Humans. Ready for Agents.",
 		siteName: "Repolith",
 		url: siteUrl,
 		images: [
@@ -56,7 +56,7 @@ export const metadata: Metadata = {
 	twitter: {
 		card: "summary_large_image",
 		title: "Repolith",
-		description: "Re-imagining code collaboration for humans and agents.",
+		description: "Built for Humans. Ready for Agents.",
 		images: ["/og.png"],
 	},
 };

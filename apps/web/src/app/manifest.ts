@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
 	return {
 		name: "Repolith",
 		short_name: "Repolith",
-		description: "Re-imagining code collaboration for humans and agents.",
+		description: "Built for Humans. Ready for Agents.",
 		start_url: "/",
 		display: "standalone",
 		background_color: "#000000",

@@ -17,11 +17,14 @@ export function getBillingErrorCode(result: {
 	return BILLING_ERROR.MESSAGE_LIMIT_REACHED;
 }
 
-// ── Welcome Credit ──
+// ── Credit Packs ──
 
-export const WELCOME_CREDIT_TYPE = "welcome_credit";
-export const WELCOME_CREDIT_USD = 10;
-export const WELCOME_CREDIT_EXPIRY_DAYS = 30;
+export const USD_PER_CREDIT = 0.01;
+export const CREDITS_PER_USD = 100;
+
+export const POLAR_PURCHASE_CREDIT_TYPE = "polar_purchase_credit";
+export const POLAR_REFUND_REVERSAL_TYPE = "polar_refund_reversal";
+export const POLAR_REFUND_DEFICIT_TYPE = "polar_refund_deficit";
 
 // ── Fixed Costs ──
 
@@ -35,25 +38,12 @@ export const FIXED_COSTS = {
 
 export const MIN_CAP_USD = 0.01;
 
-// ── Stripe ──
-
-/**
- * 1 USD = 10,000 units.
- * Stripe meter price must be set to $0.0001 per unit.
- */
-export const COST_TO_UNITS = 10_000;
-export const STRIPE_MAX_EVENT_AGE_DAYS = 35;
-
 // ── Polar ──
 
 /**
  * Polar payment gateway configuration.
- * Set POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET, and POLAR_PRODUCT_ID
+ * Set POLAR_ACCESS_TOKEN, POLAR_WEBHOOK_SECRET, and the POLAR_CREDITS_*_PRODUCT_ID
  * environment variables to enable Polar as a payment gateway.
  * Optionally set POLAR_SERVER=sandbox for testing.
  */
 export const POLAR_ENABLED_ENV_KEY = "POLAR_ACCESS_TOKEN";
-
-// ── Subscription ──
-
-export const ACTIVE_SUBSCRIPTION_STATUSES = ["active", "trialing"] as const;

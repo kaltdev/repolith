@@ -162,7 +162,9 @@ export function SuggestPromptDialog({ owner, repo, open, onOpenChange }: Suggest
 			const data = await res.json();
 			if (!res.ok) {
 				if (data.error === "CREDIT_EXHAUSTED") {
-					setError("Your credits have been used up");
+					setError(
+						"Your credits have been used up. Buy more credits or add your own API key",
+					);
 				} else if (data.error === "SPENDING_LIMIT_REACHED") {
 					setError("Monthly spending limit reached");
 				} else {

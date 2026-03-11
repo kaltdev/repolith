@@ -208,7 +208,8 @@ export function PRMergePanel({
 			if (!res.ok) {
 				let errorMessage = data.error || "Failed to generate";
 				if (data.error === "CREDIT_EXHAUSTED") {
-					errorMessage = "Your credits have been used up";
+					errorMessage =
+						"Your credits have been used up. Buy more credits or add your own API key";
 				} else if (data.error === "SPENDING_LIMIT_REACHED") {
 					errorMessage = "Monthly spending limit reached";
 				}

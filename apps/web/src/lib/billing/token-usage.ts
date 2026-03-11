@@ -7,11 +7,9 @@ import {
 } from "./ai-models";
 import { isBillingExemptUser } from "./billing-exemption";
 import { getCreditBalance } from "./credit";
-import { ACTIVE_SUBSCRIPTION_STATUSES, FIXED_COSTS } from "./config";
+import { FIXED_COSTS } from "./config";
 import { Prisma } from "../../generated/prisma/client";
 import { prisma } from "../db";
-import { reportUsageToStripe } from "./stripe";
-import { reportUsageToPolar } from "./polar";
 
 const TX_OPTIONS = {
 	isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
@@ -65,21 +63,7 @@ async function splitCost(
 ): Promise<{ creditUsed: number; costUsd: number }> {
 	const balance = await getCreditBalance(userId, tx);
 	const creditUsed = Math.min(fullCost, balance.available);
-	const remainder = fullCost - creditUsed;
-
-	// No subscription → credit-only; don't bill beyond credits
-	if (remainder > 0) {
-		const subscription = await tx.subscription.findFirst({
-			where: {
-				referenceId: userId,
-				status: { in: [...ACTIVE_SUBSCRIPTION_STATUSES] },
-			},
-			select: { id: true },
-		});
-		if (!subscription) return { creditUsed, costUsd: 0 };
-	}
-
-	return { creditUsed, costUsd: remainder };
+	return { creditUsed, costUsd: 0 };
 }
 
 export async function logTokenUsage(params: {
@@ -99,7 +83,7 @@ export async function logTokenUsage(params: {
 			: calculateCostUsd(params.modelId, usageDetails);
 	const fullCost = costDetails?.total ?? 0;
 
-	const usageLog = await withSerializableTx(async (tx) => {
+	await withSerializableTx(async (tx) => {
 		const { creditUsed, costUsd } =
 			params.isCustomApiKey || isBillingExempt || fullCost <= 0
 				? { creditUsed: 0, costUsd: 0 }
@@ -128,20 +112,11 @@ export async function logTokenUsage(params: {
 				costUsd,
 				creditUsed,
 				aiCallLogId: aiCallLog.id,
-				stripeReported: costUsd <= 0,
-				polarReported: costUsd <= 0,
+				stripeReported: true,
+				polarReported: true,
 			},
 		});
 	});
-
-	if (Number(usageLog.costUsd) > 0) {
-		reportUsageToStripe(usageLog.id, params.userId, Number(usageLog.costUsd)).catch(
-			(e) => console.error("[billing] reportUsageToStripe failed:", e),
-		);
-		reportUsageToPolar(usageLog.id, params.userId, Number(usageLog.costUsd)).catch(
-			(e) => console.error("[billing] reportUsageToPolar failed:", e),
-		);
-	}
 }
 
 export async function logFixedCostUsage(params: {
@@ -153,7 +128,7 @@ export async function logFixedCostUsage(params: {
 		params.costUsd ?? FIXED_COSTS[params.taskType as keyof typeof FIXED_COSTS] ?? 0;
 	const isBillingExempt = await isBillingExemptUser(params.userId);
 
-	const usageLog = await withSerializableTx(async (tx) => {
+	await withSerializableTx(async (tx) => {
 		const { creditUsed, costUsd } =
 			!isBillingExempt && fullCost > 0
 				? await splitCost(tx, params.userId, fullCost)
@@ -165,18 +140,9 @@ export async function logFixedCostUsage(params: {
 				taskType: params.taskType,
 				costUsd,
 				creditUsed,
-				stripeReported: costUsd <= 0,
-				polarReported: costUsd <= 0,
+				stripeReported: true,
+				polarReported: true,
 			},
 		});
 	});
-
-	if (Number(usageLog.costUsd) > 0) {
-		reportUsageToStripe(usageLog.id, params.userId, Number(usageLog.costUsd)).catch(
-			(e) => console.error("[billing] reportUsageToStripe failed:", e),
-		);
-		reportUsageToPolar(usageLog.id, params.userId, Number(usageLog.costUsd)).catch(
-			(e) => console.error("[billing] reportUsageToPolar failed:", e),
-		);
-	}
 }

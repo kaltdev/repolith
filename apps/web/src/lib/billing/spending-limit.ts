@@ -1,12 +1,5 @@
 import { prisma } from "../db";
-import { ACTIVE_SUBSCRIPTION_STATUSES, MIN_CAP_USD } from "./config";
-
-export interface SpendingLimitInfo {
-	monthlyCapUsd: number | null;
-	periodUsageUsd: number;
-	periodStart: Date;
-	remainingUsd: number | null;
-}
+import { MIN_CAP_USD } from "./config";
 
 export async function getSpendingLimit(userId: string): Promise<number | null> {
 	const config = await prisma.spendingLimit.findUnique({ where: { userId } });
@@ -32,39 +25,11 @@ export async function updateSpendingLimit(
 	return Number(config.monthlyCapUsd);
 }
 
-export async function getActiveSubscription(userId: string) {
-	return prisma.subscription.findFirst({
-		where: {
-			referenceId: userId,
-			status: { in: [...ACTIVE_SUBSCRIPTION_STATUSES] },
-		},
-		select: { id: true, periodStart: true, periodEnd: true },
-	});
-}
-
-/** Actual billed amount (post-credit) in the period. Credits are excluded. */
+/** Total app-funded usage value in the period, including consumed credits. */
 export async function getCurrentPeriodUsage(userId: string, periodStart: Date): Promise<number> {
 	const result = await prisma.usageLog.aggregate({
 		where: { userId, createdAt: { gte: periodStart } },
-		_sum: { costUsd: true },
+		_sum: { costUsd: true, creditUsed: true },
 	});
-	return Number(result._sum.costUsd ?? 0);
-}
-
-export async function getSpendingLimitInfo(userId: string): Promise<SpendingLimitInfo | null> {
-	const subscription = await getActiveSubscription(userId);
-	if (!subscription?.periodStart) return null;
-
-	const [monthlyCapUsd, periodUsageUsd] = await Promise.all([
-		getSpendingLimit(userId),
-		getCurrentPeriodUsage(userId, subscription.periodStart),
-	]);
-
-	return {
-		monthlyCapUsd,
-		periodUsageUsd,
-		periodStart: subscription.periodStart,
-		remainingUsd:
-			monthlyCapUsd !== null ? Math.max(0, monthlyCapUsd - periodUsageUsd) : null,
-	};
+	return Number(result._sum.costUsd ?? 0) + Number(result._sum.creditUsed ?? 0);
 }

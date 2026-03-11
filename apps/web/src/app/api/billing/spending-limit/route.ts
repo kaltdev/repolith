@@ -2,7 +2,6 @@ import { auth } from "@/lib/auth";
 import {
 	getCurrentPeriodUsage,
 	getSpendingLimit,
-	getSpendingLimitInfo,
 	updateSpendingLimit,
 } from "@/lib/billing/spending-limit";
 import { getCreditBalance } from "@/lib/billing/credit";
@@ -12,17 +11,6 @@ export async function GET() {
 	const session = await auth.api.getSession({ headers: await headers() });
 	if (!session?.user?.id) {
 		return Response.json({ error: "Unauthorized" }, { status: 401 });
-	}
-
-	const info = await getSpendingLimitInfo(session.user.id);
-	if (info) {
-		return Response.json({
-			mode: "subscription",
-			monthlyCapUsd: info.monthlyCapUsd,
-			periodUsageUsd: info.periodUsageUsd,
-			periodStart: info.periodStart.toISOString(),
-			remainingUsd: info.remainingUsd,
-		});
 	}
 
 	const monthStart = new Date();
@@ -37,6 +25,8 @@ export async function GET() {
 		mode: "credit",
 		available: balance.available,
 		totalGranted: balance.totalGranted,
+		remainingUsd:
+			monthlyCapUsd !== null ? Math.max(0, monthlyCapUsd - periodUsageUsd) : null,
 		monthlyCapUsd,
 		periodUsageUsd,
 		periodStart: monthStart.toISOString(),

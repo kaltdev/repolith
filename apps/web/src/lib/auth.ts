@@ -10,11 +10,13 @@ import { cache } from "react";
 import { dash, sentinel } from "@better-auth/infra";
 import { createHash } from "@better-auth/utils/hash";
 import { admin, oAuthProxy } from "better-auth/plugins";
-import { stripe } from "@better-auth/stripe";
-import { getStripeClient, isStripeEnabled } from "./billing/stripe";
-import { polar, checkout, portal, usage, webhooks } from "@polar-sh/better-auth";
+import { polar, checkout, portal, webhooks } from "@polar-sh/better-auth";
 import { getPolarClient, isPolarEnabled } from "./billing/polar";
-import { grantSignupCredits } from "./billing/credit";
+import { getPolarCreditPackProducts } from "./billing/credit-packs";
+import {
+	applyPolarRefundToCredits,
+	grantCreditsForPaidPolarOrder,
+} from "./billing/polar-purchase-grants";
 import { patSignIn } from "./auth-plugins/pat-signin";
 
 async function getOctokitUser(token: string) {
@@ -52,36 +54,6 @@ export const auth = betterAuth({
 		sentinel(),
 		admin(),
 		patSignIn(),
-		...(isStripeEnabled
-			? [
-					stripe({
-						stripeClient: getStripeClient(),
-						stripeWebhookSecret:
-							process.env.STRIPE_WEBHOOK_SECRET!,
-						createCustomerOnSignUp: true,
-						onCustomerCreate: async ({ user }) => {
-							await grantSignupCredits(user.id);
-						},
-						subscription: {
-							enabled: true,
-							plans: [
-								{
-									name: "base",
-									priceId: process.env
-										.STRIPE_BASE_PRICE_ID!,
-									lineItems: [
-										{
-											price: process
-												.env
-												.STRIPE_METERED_PRICE_ID!,
-										},
-									],
-								},
-							],
-						},
-					}),
-				]
-			: []),
 		...(isPolarEnabled
 			? [
 					polar({
@@ -89,34 +61,189 @@ export const auth = betterAuth({
 						createCustomerOnSignUp: true,
 						use: [
 							checkout({
-								products: [
-									{
-										productId: process
-											.env
-											.POLAR_PRODUCT_ID!,
-										slug: "base",
-									},
-								],
+								products: getPolarCreditPackProducts(),
 								successUrl: "/settings?tab=billing&checkout_id={CHECKOUT_ID}",
 								authenticatedUsersOnly: true,
 							}),
 							portal(),
-							usage(),
 							webhooks({
 								secret: process.env
 									.POLAR_WEBHOOK_SECRET!,
 								onOrderPaid: async (payload) => {
-									console.log(
-										"[polar] Order paid:",
-										payload,
+									const { data } = payload;
+									const productId =
+										data.productId ??
+										data.product?.id ??
+										null;
+									if (!productId) {
+										throw new Error(
+											`Polar order ${data.id} is missing a product id`,
+										);
+									}
+
+									await grantCreditsForPaidPolarOrder(
+										{
+											polarOrderId:
+												data.id,
+											polarCheckoutId:
+												data.checkoutId,
+											polarCustomerId:
+												data.customerId,
+											polarExternalUserId:
+												data
+													.customer
+													.externalId ??
+												null,
+											polarProductId:
+												productId,
+											amountPaidUsd:
+												data.totalAmount /
+												100,
+											currency: data.currency,
+											sourceEventType:
+												payload.type,
+											metadataJson:
+												JSON.stringify(
+													{
+														orderId: data.id,
+														checkoutId: data.checkoutId,
+														productId,
+														totalAmount:
+															data.totalAmount,
+														currency: data.currency,
+													},
+												),
+										},
 									);
 								},
-								onCustomerStateChanged: async (
+								onRefundCreated: async (
 									payload,
 								) => {
-									console.log(
-										"[polar] Customer state changed:",
-										payload,
+									if (
+										payload.data
+											.status !==
+										"succeeded"
+									)
+										return;
+
+									await applyPolarRefundToCredits(
+										{
+											polarRefundId:
+												payload
+													.data
+													.id,
+											polarOrderId:
+												payload
+													.data
+													.orderId,
+											polarCustomerId:
+												payload
+													.data
+													.customerId,
+											amountRefundedUsd:
+												payload
+													.data
+													.amount /
+												100,
+											currency: payload
+												.data
+												.currency,
+											refundStatus:
+												payload
+													.data
+													.status,
+											refundReason:
+												payload
+													.data
+													.reason,
+											sourceEventType:
+												payload.type,
+											metadataJson:
+												JSON.stringify(
+													{
+														refundId: payload
+															.data
+															.id,
+														orderId: payload
+															.data
+															.orderId,
+														amount: payload
+															.data
+															.amount,
+														currency: payload
+															.data
+															.currency,
+														status: payload
+															.data
+															.status,
+													},
+												),
+										},
+									);
+								},
+								onRefundUpdated: async (
+									payload,
+								) => {
+									if (
+										payload.data
+											.status !==
+										"succeeded"
+									)
+										return;
+
+									await applyPolarRefundToCredits(
+										{
+											polarRefundId:
+												payload
+													.data
+													.id,
+											polarOrderId:
+												payload
+													.data
+													.orderId,
+											polarCustomerId:
+												payload
+													.data
+													.customerId,
+											amountRefundedUsd:
+												payload
+													.data
+													.amount /
+												100,
+											currency: payload
+												.data
+												.currency,
+											refundStatus:
+												payload
+													.data
+													.status,
+											refundReason:
+												payload
+													.data
+													.reason,
+											sourceEventType:
+												payload.type,
+											metadataJson:
+												JSON.stringify(
+													{
+														refundId: payload
+															.data
+															.id,
+														orderId: payload
+															.data
+															.orderId,
+														amount: payload
+															.data
+															.amount,
+														currency: payload
+															.data
+															.currency,
+														status: payload
+															.data
+															.status,
+													},
+												),
+										},
 									);
 								},
 							}),

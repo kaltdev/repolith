@@ -1682,8 +1682,8 @@ export function AIChat({
 												{error?.message?.includes(
 													BILLING_ERROR.SPENDING_LIMIT_REACHED,
 												)
-													? "Adjust your spending limit in Settings → Billing to continue."
-													: "Subscribe or add your own API key in Settings to continue."}
+													? "Adjust your spending limit in Settings -> Billing to continue."
+													: "Open Settings -> Billing to buy more credits, or add your own API key in Settings."}
 											</p>
 											<button
 												type="button"
@@ -1698,7 +1698,7 @@ export function AIChat({
 												className="mt-1 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-medium bg-foreground text-background hover:bg-foreground/85 transition-colors cursor-pointer"
 											>
 												<CreditCard className="w-3 h-3" />
-												Manage
+												Open
 												Billing
 											</button>
 										</div>

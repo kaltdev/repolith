@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Key, AlertCircle, RotateCcw } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, ExternalLink, Key } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 import {
 	Dialog,
 	DialogContent,
@@ -14,21 +14,6 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import type { UserSettings } from "@/lib/user-settings-store";
-
-type BillingGateway = "stripe" | "polar";
-
-const PAYMENT_GATEWAY = (process.env.NEXT_PUBLIC_PAYMENT_GATEWAY ?? "stripe").toLowerCase();
-const ENV_PAYMENT_GATEWAY: BillingGateway = PAYMENT_GATEWAY === "polar" ? "polar" : "stripe";
-
-interface BillingGatewayData {
-	activeGateway: BillingGateway | null;
-	linkedGateway: BillingGateway | null;
-	preferredGateway: BillingGateway | null;
-	available: {
-		stripe: boolean;
-		polar: boolean;
-	};
-}
 
 interface BillingTabProps {
 	settings: UserSettings;
@@ -40,11 +25,10 @@ interface BalanceData {
 	totalUsed: number;
 	available: number;
 	nearestExpiry: string | null;
-	welcomed: boolean;
 }
 
 interface SpendingLimitData {
-	mode: "credit" | "subscription";
+	mode: "credit";
 	monthlyCapUsd?: number | null;
 	periodUsageUsd?: number;
 	periodStart?: string;
@@ -53,12 +37,27 @@ interface SpendingLimitData {
 	totalGranted?: number;
 }
 
-function formatUsd(amount: number): string {
-	return `$${amount.toFixed(2)}`;
+interface CreditPackData {
+	slug: string;
+	name: string;
+	description: string;
+	priceUsd: number;
+	credits: number;
+	grantedAmountUsd: number;
+	available: boolean;
 }
 
-function formatCreditUsd(amount: number): string {
-	return `$${amount.toFixed(4)}`;
+interface BillingPacksData {
+	polarEnabled: boolean;
+	packs: CreditPackData[];
+}
+
+function usdToCredits(amountUsd: number): number {
+	return Math.round(amountUsd * 100);
+}
+
+function formatUsd(amount: number): string {
+	return `$${amount.toFixed(2)}`;
 }
 
 function formatDate(date: string | Date): string {
@@ -81,6 +80,12 @@ async function fetchSpendingLimit(): Promise<SpendingLimitData> {
 	return res.json();
 }
 
+async function fetchPacks(): Promise<BillingPacksData> {
+	const res = await fetch("/api/billing/packs");
+	if (!res.ok) throw new Error("Failed to load credit packs");
+	return res.json();
+}
+
 async function patchSpendingLimit(value: number | null) {
 	const res = await fetch("/api/billing/spending-limit", {
 		method: "PATCH",
@@ -92,16 +97,6 @@ async function patchSpendingLimit(value: number | null) {
 		throw new Error(data.error ?? "Failed to update");
 	}
 	return res.json();
-}
-
-async function fetchBillingGateway(): Promise<BillingGatewayData | null> {
-	try {
-		const res = await fetch("/api/billing/gateway");
-		if (!res.ok) return null;
-		return res.json();
-	} catch {
-		return null;
-	}
 }
 
 export function BillingTab({ settings, onNavigate }: BillingTabProps) {
@@ -120,8 +115,8 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 
 	const {
 		data: spendingLimit,
-		isLoading: slLoading,
-		error: slError,
+		isLoading: spendingLoading,
+		error: spendingError,
 	} = useQuery({
 		queryKey: ["billing-spending-limit"],
 		queryFn: fetchSpendingLimit,
@@ -131,33 +126,13 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 		refetchOnWindowFocus: "always",
 	});
 
-	const { data: gatewayInfo } = useQuery({
-		queryKey: ["billing-gateway"],
-		queryFn: fetchBillingGateway,
-		staleTime: 30_000,
-		gcTime: 5 * 60_000,
-		refetchOnMount: "always",
-		refetchOnWindowFocus: "always",
-		retry: false,
-	});
-
-	const activeGateway: BillingGateway = gatewayInfo?.activeGateway ?? ENV_PAYMENT_GATEWAY;
-
-	const { data: subscriptions } = useQuery({
-		queryKey: ["billing-subscriptions", activeGateway],
-		enabled: activeGateway === "stripe",
-		queryFn: async () => {
-			if (activeGateway !== "stripe") return [];
-			try {
-				const res = await fetch("/api/auth/subscription/list");
-				if (!res.ok) return [];
-				const data = await res.json();
-				return Array.isArray(data) ? data : [];
-			} catch {
-				// Stripe plugin not loaded (no STRIPE_SECRET_KEY) — endpoint doesn't exist
-				return [];
-			}
-		},
+	const {
+		data: packsData,
+		isLoading: packsLoading,
+		error: packsError,
+	} = useQuery({
+		queryKey: ["billing-packs"],
+		queryFn: fetchPacks,
 		staleTime: 30_000,
 		gcTime: 5 * 60_000,
 		refetchOnMount: "always",
@@ -166,16 +141,10 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 	});
 
 	const queryClient = useQueryClient();
-
 	const invalidateBilling = () =>
 		Promise.all([
 			queryClient.invalidateQueries({ queryKey: ["billing-balance"] }),
-			queryClient.invalidateQueries({
-				queryKey: ["billing-spending-limit"],
-			}),
-			queryClient.invalidateQueries({
-				queryKey: ["billing-subscriptions"],
-			}),
+			queryClient.invalidateQueries({ queryKey: ["billing-spending-limit"] }),
 		]);
 
 	const limitMutation = useMutation({
@@ -183,34 +152,13 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 		onSuccess: () => invalidateBilling(),
 	});
 
-	const restoreMutation = useMutation({
-		mutationFn: async () => {
-			try {
-				const res = await authClient.subscription.restore({});
-				if (res.error)
-					throw new Error(res.error.message ?? "Failed to restore");
-				return res.data;
-			} catch (e) {
-				throw e instanceof Error
-					? e
-					: new Error("Failed to restore subscription");
-			}
-		},
-		onSuccess: () => invalidateBilling(),
-	});
-
-	const claimCreditMutation = useMutation({
-		mutationFn: async () => {
-			const res = await fetch("/api/billing/welcome", { method: "POST" });
-			if (!res.ok) throw new Error("Failed to claim credit");
-			return res.json();
-		},
-		onSuccess: () => invalidateBilling(),
-	});
-
+	const [checkoutSlug, setCheckoutSlug] = useState<string | null>(null);
 	const [limitDialogOpen, setLimitDialogOpen] = useState(false);
 	const [limitEnabled, setLimitEnabled] = useState(false);
 	const [limitAmount, setLimitAmount] = useState("10.00");
+
+	const loading = balanceLoading || spendingLoading || packsLoading;
+	const error = balanceError ?? spendingError ?? packsError ?? limitMutation.error;
 
 	function openLimitDialog() {
 		const cap = spendingLimit?.monthlyCapUsd;
@@ -224,9 +172,6 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 		setLimitDialogOpen(true);
 	}
 
-	const loading = balanceLoading || slLoading;
-	const error = balanceError ?? slError ?? (limitMutation.error || null);
-
 	function handleLimitSave() {
 		if (!limitEnabled) {
 			limitMutation.mutate(null, {
@@ -234,18 +179,34 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 			});
 			return;
 		}
-		const val = parseFloat(limitAmount);
-		if (!Number.isFinite(val) || val < 0.01) {
+
+		const parsed = parseFloat(limitAmount);
+		if (!Number.isFinite(parsed) || parsed < 0.01) {
 			setLimitAmount("0.01");
 			limitMutation.mutate(0.01, {
 				onSuccess: () => setLimitDialogOpen(false),
 			});
 			return;
 		}
-		setLimitAmount(val.toFixed(2));
-		limitMutation.mutate(val, {
+
+		setLimitAmount(parsed.toFixed(2));
+		limitMutation.mutate(parsed, {
 			onSuccess: () => setLimitDialogOpen(false),
 		});
+	}
+
+	async function handleCheckout(slug: string) {
+		setCheckoutSlug(slug);
+		try {
+			const res = await (authClient as any).checkout({ slug });
+			if (res?.data?.url) {
+				window.location.href = res.data.url;
+			}
+		} catch {
+			console.error("[billing] Polar checkout not available");
+		} finally {
+			setCheckoutSlug(null);
+		}
 	}
 
 	if (loading) {
@@ -258,7 +219,7 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 		);
 	}
 
-	if (error && !balance) {
+	if (error || !balance || !spendingLimit || !packsData) {
 		return (
 			<div className="px-4 py-12 flex flex-col items-center text-center">
 				<p className="text-xs font-mono text-destructive">
@@ -270,145 +231,140 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 		);
 	}
 
-	const isSubscription = spendingLimit?.mode === "subscription";
-	const activeSubscription = subscriptions?.find(
-		(s) => s.status === "active" || s.status === "trialing",
-	);
-	const isCanceling = !!(
-		activeSubscription?.cancelAtPeriodEnd || activeSubscription?.cancelAt
-	);
-	const cancelDate = activeSubscription?.cancelAt ?? activeSubscription?.periodEnd;
-
-	const usageAmount = spendingLimit?.periodUsageUsd ?? 0;
-
-	const capUsd = spendingLimit?.monthlyCapUsd;
+	const usageAmount = spendingLimit.periodUsageUsd ?? 0;
+	const usageCredits = usdToCredits(usageAmount);
+	const capUsd = spendingLimit.monthlyCapUsd;
+	const capCredits = capUsd != null ? usdToCredits(capUsd) : null;
 	const usagePct =
 		capUsd != null && capUsd > 0
 			? Math.min(100, Math.round((usageAmount / capUsd) * 100))
 			: null;
-
+	const availableCredits = usdToCredits(balance.available);
+	const totalGrantedCredits = usdToCredits(balance.totalGranted);
+	const totalUsedCredits = usdToCredits(balance.totalUsed);
 	const hasByok = settings.useOwnApiKey && !!settings.openrouterApiKey;
-
-	async function handleSubscribe() {
-		try {
-			const res = await authClient.subscription.upgrade({
-				plan: "base",
-				successUrl: window.location.href,
-				cancelUrl: window.location.href,
-			});
-			if (res.data?.url) {
-				window.location.href = res.data.url;
-			}
-		} catch {
-			console.error("[billing] Stripe subscription upgrade not available");
-		}
-	}
-
-	async function handlePolarCheckout() {
-		try {
-			const res = await (authClient as any).checkout({
-				slug: "base",
-			});
-			if (res?.data?.url) {
-				window.location.href = res.data.url;
-			}
-		} catch {
-			console.error("[billing] Polar checkout not available");
-		}
-	}
-
-	function handleGatewaySubscribe() {
-		if (activeGateway === "polar") {
-			handlePolarCheckout();
-		} else if (activeGateway === "stripe") {
-			handleSubscribe();
-		} else {
-			console.error("[billing] No billing gateway is enabled");
-		}
-	}
 
 	return (
 		<div className="divide-y divide-border">
-			{/* Plan */}
 			<div className="px-4 py-4">
 				<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-					Plan
+					Buy Credits
 				</label>
-				{isSubscription ? (
-					<div className="mt-2">
-						<span className="text-sm font-mono">Base plan</span>
-						<span className="text-[10px] text-muted-foreground/50 font-mono ml-1.5">
-							{isCanceling ? "canceling" : "active"}
-						</span>
-						{isCanceling && (
-							<div className="mt-3 flex flex-col gap-3 rounded border border-destructive/20 bg-destructive/5 px-3 py-2.5 sm:flex-row sm:items-start sm:gap-2.5">
-								<AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
-								<div className="flex-1 min-w-0">
-									<p className="text-xs font-mono text-destructive">
-										Cancels{" "}
-										{cancelDate
-											? formatDate(
-													cancelDate,
-												)
-											: "at period end"}
-									</p>
-									<p className="mt-0.5 text-[10px] font-mono text-muted-foreground/50">
-										You can restore
-										before this date.
-									</p>
+				<p className="mt-1 text-[10px] font-mono text-muted-foreground/50">
+					Purchases are prepaid. Credits are granted after Polar
+					confirms payment.
+				</p>
+				{!packsData.polarEnabled && (
+					<div className="mt-3 flex items-start gap-2 rounded border border-destructive/20 bg-destructive/5 px-3 py-2.5">
+						<AlertCircle className="w-3.5 h-3.5 text-destructive shrink-0 mt-0.5" />
+						<p className="text-[11px] font-mono text-destructive/80">
+							Polar billing is not configured in this
+							environment.
+						</p>
+					</div>
+				)}
+				<div className="mt-4 grid gap-3 lg:grid-cols-3">
+					{packsData.packs.map((pack) => {
+						const isLoadingPack = checkoutSlug === pack.slug;
+						return (
+							<div
+								key={pack.slug}
+								className="border border-border px-3 py-3"
+							>
+								<div className="flex items-start justify-between gap-3">
+									<div>
+										<p className="text-sm font-mono">
+											{pack.name}
+										</p>
+										<p className="mt-1 text-[10px] font-mono text-muted-foreground/50">
+											{pack.credits.toLocaleString()}{" "}
+											credits
+										</p>
+									</div>
+									<div className="text-right">
+										<p className="text-sm font-mono">
+											{formatUsd(
+												pack.priceUsd,
+											)}
+										</p>
+										<p className="text-[10px] font-mono text-muted-foreground/50">
+											{formatUsd(
+												pack.grantedAmountUsd,
+											)}{" "}
+											usage value
+										</p>
+									</div>
 								</div>
+								<p className="mt-2 text-[10px] font-mono text-muted-foreground/70">
+									{pack.description}
+								</p>
 								<button
 									type="button"
 									onClick={() =>
-										restoreMutation.mutate()
+										handleCheckout(
+											pack.slug,
+										)
 									}
 									disabled={
-										restoreMutation.isPending
+										!packsData.polarEnabled ||
+										!pack.available ||
+										isLoadingPack
 									}
-									className="flex items-center gap-1 border border-border px-2 py-1 text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+									className="mt-4 flex items-center justify-center gap-1.5 border border-border px-3 py-1.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed w-full"
 								>
-									{restoreMutation.isPending ? (
-										"Restoring..."
-									) : (
-										<>
-											<RotateCcw className="w-2.5 h-2.5" />
-											Restore
-										</>
-									)}
+									{isLoadingPack
+										? "Redirecting..."
+										: "Buy credits"}
 								</button>
 							</div>
-						)}
-					</div>
-				) : (
-					<>
-						<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
-							You're on the free plan with credits.
-							Subscribe for on-demand usage. No monthly
-							fee.
+						);
+					})}
+				</div>
+			</div>
+
+			<div className="px-4 py-4">
+				<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
+					Credit Balance
+				</label>
+				<div className="mt-3 flex flex-wrap items-end justify-between gap-3">
+					<div>
+						<p className="text-lg font-mono tabular-nums">
+							{availableCredits.toLocaleString()} credits
 						</p>
-						<button
-							type="button"
-							onClick={handleGatewaySubscribe}
-							className="mt-2 flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
-						>
-							Subscribe
-						</button>
-					</>
+						<p className="mt-1 text-[10px] font-mono text-muted-foreground/50">
+							{formatUsd(balance.available)} available
+						</p>
+					</div>
+					<div className="text-right">
+						<p className="text-[10px] font-mono text-muted-foreground/50">
+							Granted{" "}
+							{totalGrantedCredits.toLocaleString()}{" "}
+							credits
+						</p>
+						<p className="mt-1 text-[10px] font-mono text-muted-foreground/50">
+							Used {totalUsedCredits.toLocaleString()}{" "}
+							credits
+						</p>
+					</div>
+				</div>
+				{balance.nearestExpiry && (
+					<p className="mt-2 text-[10px] font-mono text-muted-foreground/50">
+						Next expiry {formatDate(balance.nearestExpiry)}
+					</p>
 				)}
 			</div>
 
-			{/* Usage & Spending Limit */}
 			<div className="px-4 py-4">
 				<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-					{isSubscription ? "Usage This Period" : "Usage"}
+					Usage
 				</label>
 				<div className="mt-2 flex items-baseline justify-between">
 					<div>
 						<span className="text-lg font-mono tabular-nums">
-							{formatUsd(usageAmount)}
+							{usageCredits.toLocaleString()} credits
 						</span>
 						<span className="text-[10px] text-muted-foreground/50 font-mono ml-1.5">
-							used
+							used this month
 						</span>
 					</div>
 					{usagePct !== null && (
@@ -417,6 +373,13 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 						</span>
 					)}
 				</div>
+				<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
+					{formatUsd(usageAmount)} used since{" "}
+					{spendingLimit.periodStart
+						? formatDate(spendingLimit.periodStart)
+						: "this month"}
+					.
+				</p>
 				{usagePct !== null && (
 					<div className="mt-2 h-1.5 w-full bg-muted/50 dark:bg-white/[0.06] rounded-full overflow-hidden">
 						<div
@@ -430,20 +393,12 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 						/>
 					</div>
 				)}
-				{isSubscription && spendingLimit.periodStart && (
-					<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
-						{formatDate(spendingLimit.periodStart)}
-						{activeSubscription?.periodEnd &&
-							` – ${formatDate(activeSubscription.periodEnd)}`}
-					</p>
-				)}
-
 				<div className="mt-4 flex flex-col gap-2 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
 					<p className="text-xs font-mono text-muted-foreground">
 						Monthly spend limit:{" "}
 						<span className="text-foreground">
 							{capUsd != null
-								? formatUsd(capUsd)
+								? `${capCredits?.toLocaleString()} credits (${formatUsd(capUsd)})`
 								: "No limit"}
 						</span>
 					</p>
@@ -463,9 +418,10 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 								Spending Limit
 							</DialogTitle>
 							<DialogDescription className="text-xs font-mono">
-								Set a maximum monthly budget. Usage
-								from the last request can slightly
-								exceed this limit.
+								Set a maximum monthly budget for
+								app-funded usage. The most recent
+								request can slightly exceed this
+								limit.
 							</DialogDescription>
 						</DialogHeader>
 						<div className="space-y-3 py-2">
@@ -577,49 +533,6 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 				</Dialog>
 			</div>
 
-			{/* Credit Balance */}
-			<div className="px-4 py-4">
-				<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
-					Credit Balance
-				</label>
-				<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
-					Granted on signup and through promotional events.
-				</p>
-				{balance && (
-					<div className="mt-3">
-						<span className="text-lg font-mono tabular-nums">
-							{formatCreditUsd(balance.available)}
-						</span>
-						<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
-							Used {formatCreditUsd(balance.totalUsed)}
-						</p>
-						{balance.nearestExpiry && (
-							<p className="mt-2 text-[10px] text-muted-foreground/50 font-mono">
-								Expires{" "}
-								{formatDate(balance.nearestExpiry)}
-							</p>
-						)}
-						{!balance.welcomed && (
-							<button
-								type="button"
-								onClick={() =>
-									claimCreditMutation.mutate()
-								}
-								disabled={
-									claimCreditMutation.isPending
-								}
-								className="mt-3 flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/4 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-							>
-								{claimCreditMutation.isPending
-									? "Loading..."
-									: "🎉 Get welcome credit"}
-							</button>
-						)}
-					</div>
-				)}
-			</div>
-
-			{/* API Key (BYOK) */}
 			<div className="px-4 py-4">
 				<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
 					<Key className="w-3 h-3" />
@@ -628,7 +541,7 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 				<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
 					{hasByok
 						? "Your OpenRouter API key is active. AI requests are billed to your OpenRouter account."
-						: "No API key configured. AI requests will use your credits."}
+						: "No API key configured. AI requests use your available prepaid credits."}
 				</p>
 				{!hasByok && (
 					<button
@@ -641,52 +554,36 @@ export function BillingTab({ settings, onNavigate }: BillingTabProps) {
 				)}
 			</div>
 
-			{/* Manage Billing — only shown when the user has an active subscription */}
-			{activeSubscription && (
+			{packsData.polarEnabled && (
 				<div className="px-4 py-4">
 					<label className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground">
 						Manage
 					</label>
 					<p className="mt-1 text-[10px] text-muted-foreground/50 font-mono">
-						Payment methods, invoices, subscription details, and
-						cancellation.
+						View invoices, receipts, and payment details in
+						Polar.
 					</p>
 					<button
 						type="button"
 						onClick={async () => {
-							if (activeGateway === "polar") {
-								try {
-									const res = await (
-										authClient as any
-									).customer.portal();
-									if (res?.data?.url) {
-										window.location.href =
-											res.data.url;
-									}
-								} catch {
-									console.error(
-										"[billing] Polar customer portal not available",
-									);
+							try {
+								const res = await (
+									authClient as any
+								).customer.portal();
+								if (res?.data?.url) {
+									window.location.href =
+										res.data.url;
 								}
-								return;
-							}
-
-							const res =
-								await authClient.subscription.billingPortal(
-									{
-										returnUrl: window
-											.location
-											.href,
-									},
+							} catch {
+								console.error(
+									"[billing] Polar customer portal not available",
 								);
-							if (res.data?.url) {
-								window.location.href = res.data.url;
 							}
 						}}
 						className="mt-2 flex items-center gap-1.5 border border-border px-3 py-1.5 text-xs font-mono text-muted-foreground hover:text-foreground hover:bg-muted/50 dark:hover:bg-white/[0.04] transition-colors cursor-pointer"
 					>
 						<ExternalLink className="w-3 h-3" />
-						Manage billing
+						Open billing portal
 					</button>
 				</div>
 			)}

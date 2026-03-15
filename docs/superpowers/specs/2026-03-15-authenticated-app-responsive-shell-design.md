@@ -145,6 +145,16 @@ Recommended shape:
 ```ts
 type ResponsiveViewport = "phone" | "tablet" | "wideTablet" | "desktop";
 
+type RouteKind =
+	| "dashboard"
+	| "repoOverview"
+	| "repoCode"
+	| "repoDocument"
+	| "issueDetail"
+	| "prDetail"
+	| "listWithPeek"
+	| "modalOnly";
+
 type SurfaceId =
 	| "repoSidebar"
 	| "fileExplorer"
@@ -154,9 +164,72 @@ type SurfaceId =
 	| "metadataSidebar";
 
 type SurfaceMode = "persistent" | "leftSheet" | "rightSheet" | "bottomSheet";
+
+type ResponsiveSurfaceContext = {
+	viewportWidth: number;
+	routeKind: RouteKind;
+	surfaceId: SurfaceId;
+	requestedSurfaceWidth: number;
+	mainContentMinWidth: number;
+	anotherMajorSurfaceIsPersistent: boolean;
+};
 ```
 
-The pure function decides `viewport`, `canPersistPrimarySecondary`, and the mode for a given surface. The hook reads window size and exposes that policy to client components.
+The pure function decides:
+
+- `viewport`
+- whether one major surface may persist
+- the mode for the requested surface
+- whether the surface must be downgraded to sheet mode
+
+The hook reads window size and exposes that policy to client components.
+
+Ownership:
+
+- the shared hook owns viewport classification
+- route wrappers provide `routeKind`
+- each surface owner provides its preferred width and the minimum readable width required by the main content
+- the policy function returns the final mode
+
+### Persistent-surface eligibility
+
+Only these surfaces are eligible to claim the one persistent major-secondary slot below desktop:
+
+- `fileExplorer`
+- `repoSidebar`
+
+All of the following remain sheet-based below desktop:
+
+- `documentOutline`
+- `ghostChat`
+- `detailPeek`
+- `metadataSidebar`
+
+Priority order in `wideTablet`:
+
+1. `fileExplorer`
+2. `repoSidebar`
+
+If `fileExplorer` is active on a repo code or document route, it wins the persistent slot and `repoSidebar` must remain toggleable.
+
+### Readable-width downgrade rule
+
+A surface may persist only when:
+
+- the viewport class allows persistence
+- no higher-priority surface already owns the persistent slot
+- the remaining main-content width stays above the route minimum
+
+Route minimums:
+
+- `repoCode`, `repoDocument`, `prDetail`: `640px`
+- `repoOverview`, `issueDetail`, `dashboard`, `listWithPeek`: `560px`
+
+Evaluation rule:
+
+- if `viewportWidth - requestedSurfaceWidth - shellGutters` is below the route minimum, the surface downgrades to sheet mode
+
+For planning purposes, `shellGutters` should be treated as the fixed horizontal chrome and content padding required by the current shell, not as an optional visual nicety.
 
 ### SSR and hydration behavior
 
@@ -165,6 +238,19 @@ The server-rendered layout should assume the mobile-first, non-persistent baseli
 After hydration, the client hook may promote specific surfaces to `persistent` when the viewport supports it.
 
 This keeps the initial HTML safe and avoids a server-rendered desktop panel flashing on narrow screens.
+
+### Runtime resize and route-transition behavior
+
+Surface mode changes must be stable during live resize, tablet rotation, and route transitions.
+
+Rules:
+
+- If a persistent surface becomes ineligible after resize or rotation, it should remain open but convert into its sheet variant.
+- If a sheet-based surface becomes eligible for persistence after resize, it may promote into the persistent slot without losing its visible state.
+- If navigation leaves the route family that owns a local surface, that local surface closes.
+- Global Ghost chat may remain open across route transitions, but it must still obey the viewport-specific mode after navigation.
+- Entering a route that activates a higher-priority persistent candidate must evict a lower-priority candidate back to sheet mode.
+- Only one major persistent surface may exist at a time in `wideTablet`.
 
 ## Shell Behavior
 
@@ -279,9 +365,25 @@ Relevant files:
 
 Rules:
 
-- Notifications may continue using bottom sheet on smaller screens and side sheet on larger ones.
-- Settings remains a dialog on desktop but needs safer width and height behavior on tablet and phone-sized viewports.
-- Long tabbed settings content must keep only the content pane scrollable, with wrapping and spacing tuned for narrow viewports.
+- Notifications:
+  - `phone`: bottom sheet opened from the navbar bell
+  - `tablet`, `wideTablet`, `desktop`: right sheet opened from the same bell trigger
+  - no persistent variant at any width
+  - header actions remain visible while only the list body scrolls
+- Settings:
+  - `phone`: full-height dialog treatment with near-full viewport width and height
+  - `tablet`: large centered dialog using most of the viewport, not a small desktop card
+  - `wideTablet`, `desktop`: centered dialog with capped width and height
+  - the visible trigger remains the navbar account/settings entry points
+- Notifications and settings must preserve their existing trigger locations and stay fully operable with keyboard and touch input.
+- Long tabbed settings content must keep only the content pane scrollable, with the title and tab strip remaining visible.
+- Settings must not rely on fixed minimum heights that exceed the active viewport.
+
+Acceptance criteria:
+
+- the close affordance is always visible
+- the content area scrolls without clipping the dialog header
+- tab labels remain reachable on narrow widths through horizontal scrolling when needed
 
 ### Issue detail
 
@@ -325,6 +427,24 @@ Rules:
 - Hardcoded desktop-oriented minimum widths should be reduced or made conditional.
 
 ### Ordinary tables and metadata panels
+
+This pass includes the following general data surfaces:
+
+- dashboard summary cards and tab panels
+- repo overview metadata and summary panels
+- repo insights summary cards and ordinary stats grids
+- settings tab summary grids and forms
+- notification list item metadata
+- commit peek and PR peek metadata sections
+- general list rows that primarily display metadata and actions rather than technical diff content
+
+This pass does not structurally reflow:
+
+- code viewers
+- diff viewers
+- file trees
+- rendered markdown tables inside repository content
+- patch or blame-style technical tables
 
 Rules:
 
@@ -429,4 +549,3 @@ It does not cover:
 - public marketing pages
 - unrelated feature refactors
 - new navigation concepts outside the current shell
-

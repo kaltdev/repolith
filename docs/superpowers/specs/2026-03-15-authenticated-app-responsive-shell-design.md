@@ -148,7 +148,8 @@ This pass covers every authenticated route family under `/(app)` either through 
 | repo overview-style pages | `/repos/[owner]/[repo]`, `/activity`, `/insights`, `/security`, `/releases`, `/tags`, `/discussions`, `/people`, `/prompts`, `/settings` | `repoOverview` | Repo sidebar behavior, card/grid responsiveness, metadata-panel cleanup |
 | repo-local issue and PR lists | `/repos/[owner]/[repo]/issues`, `/repos/[owner]/[repo]/pulls` | `listWithPeek` | Shared shell, stacked list metadata, peek/sheet responsiveness where present |
 | repo code browsing pages | `/code`, `/tree/...` | `repoCode` | File explorer policy and technical-content overflow preservation |
-| repo document and commit-detail pages | `/blob/...`, `/commits`, `/commits/[sha]` | `repoDocument` | File explorer or outline behavior plus technical-content overflow preservation |
+| repo commit list pages | `/commits` | `listWithPeek` | Shared shell plus commit peek-sheet responsiveness |
+| repo document and commit-detail pages | `/blob/...`, `/commits/[sha]` | `repoDocument` | File explorer or outline behavior plus technical-content overflow preservation |
 | repo issue detail | `/repos/[owner]/[repo]/issues/[number]` | `issueDetail` | Metadata-sidebar responsiveness and main-thread priority |
 | repo PR detail and subroutes | `/repos/[owner]/[repo]/pulls/[number]`, `/pulls/[number]/...` | `prDetail` | Single-primary-surface tablet behavior, desktop split preserved |
 | repo record detail pages | `/repos/[owner]/[repo]/discussions/[number]`, `/prompts/[id]`, `/people/[username]`, `/releases/[tag]`, `/security/advisories/[ghsaId]` | `issueDetail` | Main content stays primary, supporting metadata surfaces remain toggleable |
@@ -253,10 +254,37 @@ To keep the pure function deterministic across routes, planning should use these
 - `metadataSidebar.requestedSurfaceWidth = 280`
 - `ghostChat.requestedSurfaceWidth = 380`
 - `notificationsPanel.requestedSurfaceWidth = 400`
+- `settingsDialog.requestedSurfaceWidth = 720`
 - `detailPeek.requestedSurfaceWidth = 700`
 - `shellGutters = 32` for phone, tablet, and wideTablet calculations
 
 Only `repoSidebar` and `fileExplorer` participate in persistent-slot calculations below desktop. The remaining values exist so sheet sizing and downgrade logic use stable test inputs.
+
+### State-owner interfaces
+
+The state owners and coordinator should stay lean and explicit.
+
+Required responsibilities:
+
+- global surface owner
+  - owns open state for `ghostChat`, `notificationsPanel`, and `settingsDialog`
+  - exposes `openGlobalSurface(id)`, `closeGlobalSurface(id)`, and `getOpenGlobalSurface()`
+- route-local surface owner
+  - owns open state for local sheets and local persistent-surface visibility
+  - exposes `openLocalSurface(id)`, `closeLocalSurface(id)`, and `isLocalSurfaceOpen(id)`
+- repo-surface coordinator
+  - lives in the repo route layout
+  - arbitrates `repoSidebar`, `fileExplorer`, and `documentOutline`
+  - exposes `claimPersistentSurface(id)`, `releasePersistentSurface(id)`, and `getPersistentSurface()`
+  - owns no global UI state outside repo routes
+
+Width state ownership:
+
+- `RepoLayoutWrapper` continues to own persisted repo-sidebar width and collapse state
+- `CodeContentWrapper` continues to own file-explorer width state
+- `PRDetailLayout` continues to own PR split-ratio state
+
+The coordinator consumes those existing states when deciding visibility and persistence; it does not replace their storage model in this pass.
 
 ### Global and local arbitration rules
 
@@ -271,12 +299,32 @@ Rules:
 - If a route-local sheet is open and a higher-priority local surface claims the persistent slot, the lower-priority local surface closes unless it already owns the persistent slot.
 - Route transitions always clear route-local open state. Global surface state may survive only when explicitly allowed by the runtime rules above.
 
+### Overlay and z-index precedence
+
+Overlay precedence must be deterministic so nested surfaces never compete for focus or stacking order.
+
+Priority order:
+
+1. `settingsDialog`
+2. global and route-local non-persistent sheets
+3. persistent side surfaces
+4. page content
+
+Rules:
+
+- `settingsDialog` always renders above every other surface and makes the rest of the shell inert.
+- Any non-persistent sheet renders above persistent side surfaces.
+- Two non-persistent sheets must never remain open together; the arbitration rules above close the lower-priority surface first.
+- Persistent surfaces never render overlays above page content.
+
 ### Persistent-surface eligibility
 
 Only these surfaces are eligible to claim the one persistent major-secondary slot below desktop:
 
 - `fileExplorer`
 - `repoSidebar`
+
+In this design, a `major` secondary surface is a surface that can materially reduce the readable width of the main content when kept persistently visible. For this pass, only `fileExplorer` and `repoSidebar` are major secondary surfaces.
 
 All of the following remain sheet-based below desktop:
 
@@ -328,11 +376,24 @@ Rules:
 
 - If a persistent surface becomes ineligible after resize or rotation, it should remain open but convert into its sheet variant.
 - If a sheet-based `fileExplorer` or `repoSidebar` becomes eligible for persistence after resize, it must promote into the persistent slot without losing its visible state.
+- If an open non-persistent surface changes only sheet side across breakpoints, it remains open and switches sides in place.
 - If navigation leaves the route family that owns a local surface, that local surface closes.
 - Global Ghost chat may remain open across route transitions, but it must still obey the viewport-specific mode after navigation.
 - Notifications and settings keep their open state only within the interaction that opened them; route navigation closes them.
 - Entering a route that activates a higher-priority persistent candidate must evict a lower-priority candidate back to sheet mode.
 - Only one major persistent surface may exist at a time in `wideTablet`.
+
+### Manual-close behavior across resize
+
+If a user explicitly closes a surface, resize alone must not reopen it.
+
+Rules:
+
+- A manually closed `fileExplorer` or `repoSidebar` remains closed when crossing between `tablet`, `wideTablet`, and `desktop` until the user reopens it.
+- A surface that is open may change mode across resize without losing its open state.
+- Automatic promotion to persistent mode happens only for surfaces that were already open.
+- Automatic downgrade from persistent to sheet mode preserves openness only if the surface was open before the breakpoint change.
+- Ordinary sheet-to-sheet transitions such as `bottomSheet` to `rightSheet` preserve openness only when the surface was open before the transition.
 
 ## Shell Behavior
 

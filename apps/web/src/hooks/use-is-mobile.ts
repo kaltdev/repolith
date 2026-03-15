@@ -1,22 +1,9 @@
-import { useState, useEffect } from "react";
-
-const MOBILE_BREAKPOINT = 768;
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
 
 export function useIsMobile() {
-	const [isMobile, setIsMobile] = useState<boolean | undefined>(undefined);
+	const { isReady, viewport } = useResponsiveSurfaceContext();
 
-	useEffect(() => {
-		const checkMobile = () => {
-			setIsMobile(window.innerWidth < MOBILE_BREAKPOINT);
-		};
+	if (!isReady) return undefined;
 
-		checkMobile();
-
-		const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`);
-		mql.addEventListener("change", checkMobile);
-
-		return () => mql.removeEventListener("change", checkMobile);
-	}, []);
-
-	return isMobile;
+	return viewport === "phone";
 }

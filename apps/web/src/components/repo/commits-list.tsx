@@ -11,7 +11,6 @@ import {
 	X,
 	MoreHorizontal,
 	Loader2,
-	Expand,
 	Maximize2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -121,7 +120,7 @@ function BranchPicker({
 		<div className="relative">
 			<button
 				onClick={() => setOpen(!open)}
-				className="flex items-center gap-1.5 h-9 px-3 text-xs font-mono rounded-md border border-border hover:bg-muted/60 dark:hover:bg-white/3 transition-colors cursor-pointer"
+				className="flex h-9 w-full items-center justify-between gap-1.5 rounded-md border border-border px-3 text-xs font-mono transition-colors hover:bg-muted/60 dark:hover:bg-white/3 sm:w-auto sm:justify-start cursor-pointer"
 			>
 				<GitBranch className="w-3.5 h-3.5 text-muted-foreground/70" />
 				<span className="max-w-[140px] truncate">{currentBranch}</span>
@@ -136,7 +135,7 @@ function BranchPicker({
 							setSearch("");
 						}}
 					/>
-					<div className="absolute top-full left-0 mt-1 z-50 w-72 border border-border bg-card shadow-lg rounded-md">
+					<div className="absolute top-full left-0 mt-1 z-50 w-full min-w-[16rem] border border-border bg-card shadow-lg rounded-md sm:w-72">
 						<div className="p-2 border-b border-border">
 							<div className="relative">
 								<Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/50" />
@@ -253,59 +252,63 @@ function CommitsToolbar({
 	onClearDates: () => void;
 }) {
 	return (
-		<div className="flex items-center gap-2">
-			<BranchPicker
-				branches={branches}
-				currentBranch={currentBranch}
-				defaultBranch={defaultBranch}
-				onChange={onBranchChange}
-			/>
-			<div className="relative flex-1">
-				<input
-					type="text"
-					placeholder="Search commits..."
-					value={search}
-					onChange={(e) => onSearchChange(e.target.value)}
-					className="w-full h-9 rounded-md border border-border bg-background px-3 pl-9 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+		<div className="flex flex-col gap-2 lg:flex-row lg:items-center">
+			<div className="flex flex-col gap-2 sm:flex-row sm:items-center lg:min-w-0 lg:flex-1">
+				<BranchPicker
+					branches={branches}
+					currentBranch={currentBranch}
+					defaultBranch={defaultBranch}
+					onChange={onBranchChange}
 				/>
-				<svg
-					className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50"
-					width="14"
-					height="14"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					strokeWidth="2"
-					strokeLinecap="round"
-					strokeLinejoin="round"
-				>
-					<circle cx="11" cy="11" r="8" />
-					<line x1="21" y1="21" x2="16.65" y2="16.65" />
-				</svg>
+				<div className="relative min-w-0 flex-1">
+					<input
+						type="text"
+						placeholder="Search commits..."
+						value={search}
+						onChange={(e) => onSearchChange(e.target.value)}
+						className="h-9 w-full rounded-md border border-border bg-background px-3 pl-9 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-ring"
+					/>
+					<svg
+						className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50"
+						width="14"
+						height="14"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						strokeWidth="2"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					>
+						<circle cx="11" cy="11" r="8" />
+						<line x1="21" y1="21" x2="16.65" y2="16.65" />
+					</svg>
+				</div>
 			</div>
-			<input
-				type="date"
-				value={since}
-				onChange={(e) => onSinceChange(e.target.value)}
-				title="Since date"
-				className="h-9 rounded-md border border-border bg-background px-3 font-mono text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-			/>
-			<input
-				type="date"
-				value={until}
-				onChange={(e) => onUntilChange(e.target.value)}
-				title="Until date"
-				className="h-9 rounded-md border border-border bg-background px-3 font-mono text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-			/>
-			{hasDateFilter && (
-				<button
-					onClick={onClearDates}
-					title="Clear date filters"
-					className="h-9 rounded-md border border-border bg-background px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground cursor-pointer"
-				>
-					✕
-				</button>
-			)}
+			<div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:flex-nowrap">
+				<input
+					type="date"
+					value={since}
+					onChange={(e) => onSinceChange(e.target.value)}
+					title="Since date"
+					className="h-9 min-w-0 rounded-md border border-border bg-background px-3 font-mono text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+				/>
+				<input
+					type="date"
+					value={until}
+					onChange={(e) => onUntilChange(e.target.value)}
+					title="Until date"
+					className="h-9 min-w-0 rounded-md border border-border bg-background px-3 font-mono text-xs text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+				/>
+				{hasDateFilter && (
+					<button
+						onClick={onClearDates}
+						title="Clear date filters"
+						className="col-span-2 h-9 rounded-md border border-border bg-background px-3 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:col-span-1 cursor-pointer"
+					>
+						Clear dates
+					</button>
+				)}
+			</div>
 		</div>
 	);
 }

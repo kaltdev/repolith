@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
+import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import { cn } from "@/lib/utils";
 import { List, Search, X, ChevronRight } from "lucide-react";
 
@@ -167,6 +169,7 @@ function FlatOutlineItem({
 // ---------------------------------------------------------------------------
 
 export function DocumentOutline({ visible }: DocumentOutlineProps) {
+	const { width } = useResponsiveSurfaceContext();
 	const [headings, setHeadings] = useState<HeadingNode[]>([]);
 	const [activeId, setActiveId] = useState<string | null>(null);
 	const [isExpanded, setIsExpanded] = useState(() => {
@@ -408,6 +411,12 @@ export function DocumentOutline({ visible }: DocumentOutlineProps) {
 	);
 
 	const flatList = useMemo(() => flattenTree(displayTree), [displayTree]);
+	const outlineDecision = getResponsiveSurfaceDecision({
+		routeKind: "repoDocument",
+		surfaceId: "documentOutline",
+		viewportWidth: width,
+	});
+	const isPersistentOutline = outlineDecision.mode === "persistent";
 
 	// Navigate to heading
 	const navigateTo = useCallback((id: string) => {
@@ -578,142 +587,149 @@ export function DocumentOutline({ visible }: DocumentOutlineProps) {
 
 	return (
 		<>
-			{/* Desktop: right-side pane */}
-			<div className="hidden lg:block shrink-0">
-				<nav
-					ref={outlineRef}
-					role="navigation"
-					aria-label="Document outline"
-					className={cn(
-						"sticky top-0 h-[calc(100dvh-8rem)] flex flex-col transition-all duration-200",
-						isExpanded ? "w-[260px]" : "w-10",
-					)}
-				>
-					{/* Header */}
-					<div
+			{isPersistentOutline ? (
+				<div className="shrink-0">
+					<nav
+						ref={outlineRef}
+						role="navigation"
+						aria-label="Document outline"
 						className={cn(
-							"flex items-center shrink-0 mb-1",
-							isExpanded
-								? "px-2 pt-2 pb-1 justify-between"
-								: "justify-center pt-2",
+							"sticky top-0 h-[calc(100dvh-8rem)] flex flex-col transition-all duration-200",
+							isExpanded ? "w-[260px]" : "w-10",
 						)}
 					>
-						{isExpanded && (
-							<span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/50">
-								Outline
-							</span>
-						)}
-						<button
-							type="button"
-							onClick={() => setIsExpanded((v) => !v)}
+						{/* Header */}
+						<div
 							className={cn(
-								"p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer",
-								!isExpanded && "mx-auto",
-							)}
-							title={
+								"flex items-center shrink-0 mb-1",
 								isExpanded
-									? "Collapse outline"
-									: "Expand outline"
-							}
-						>
-							{isExpanded ? (
-								<ChevronRight className="w-3.5 h-3.5" />
-							) : (
-								<List className="w-3.5 h-3.5" />
+									? "px-2 pt-2 pb-1 justify-between"
+									: "justify-center pt-2",
 							)}
-						</button>
-					</div>
-
-					{/* Collapsed: icon rail with dots */}
-					{!isExpanded && (
-						<div className="flex flex-col items-center gap-[3px] mt-2 px-1">
-							{flattenTree(headings)
-								.slice(0, 40)
-								.map((node) => (
-									<button
-										key={node.id}
-										type="button"
-										onClick={() => {
-											navigateTo(
-												node.id,
-											);
-										}}
-										className={cn(
-											"rounded-full transition-colors cursor-pointer",
-											node.level <=
-												2
-												? "w-2.5 h-[3px]"
-												: "w-1.5 h-[3px]",
-											activeId ===
-												node.id
-												? "bg-foreground"
-												: "bg-muted-foreground/20 hover:bg-muted-foreground/50",
-										)}
-										title={node.text}
-									/>
-								))}
-						</div>
-					)}
-
-					{/* Expanded: full outline */}
-					{isExpanded && outlineContent}
-				</nav>
-			</div>
-
-			{/* Tablet: same as desktop but narrower */}
-			{/* Handled by the responsive width classes above */}
-
-			{/* Mobile: floating button + drawer */}
-			<div className="lg:hidden">
-				{/* Floating button */}
-				{!mobileOpen && (
-					<button
-						type="button"
-						onClick={() => setMobileOpen(true)}
-						className="fixed bottom-4 right-4 z-40 p-2.5 rounded-full bg-background border border-border shadow-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-						title="Document outline"
-					>
-						<List className="w-4 h-4" />
-					</button>
-				)}
-
-				{/* Drawer overlay */}
-				{mobileOpen && (
-					<div
-						className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
-						onClick={() => setMobileOpen(false)}
-						onKeyDown={(e) => {
-							if (e.key === "Escape")
-								setMobileOpen(false);
-						}}
-					>
-						<nav
-							role="navigation"
-							aria-label="Document outline"
-							className="absolute right-0 top-0 bottom-0 w-[280px] bg-background border-l border-border shadow-xl flex flex-col"
-							onClick={(e) => e.stopPropagation()}
 						>
-							<div className="flex items-center justify-between px-3 py-2.5 border-b border-border/50 shrink-0">
-								<span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/60">
+							{isExpanded && (
+								<span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground/50">
 									Outline
 								</span>
-								<button
-									type="button"
-									onClick={() =>
-										setMobileOpen(false)
-									}
-									className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
-								>
-									<X className="w-4 h-4" />
-								</button>
+							)}
+							<button
+								type="button"
+								onClick={() =>
+									setIsExpanded((v) => !v)
+								}
+								className={cn(
+									"p-1 rounded text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer",
+									!isExpanded && "mx-auto",
+								)}
+								title={
+									isExpanded
+										? "Collapse outline"
+										: "Expand outline"
+								}
+							>
+								{isExpanded ? (
+									<ChevronRight className="w-3.5 h-3.5" />
+								) : (
+									<List className="w-3.5 h-3.5" />
+								)}
+							</button>
+						</div>
+
+						{/* Collapsed: icon rail with dots */}
+						{!isExpanded && (
+							<div className="flex flex-col items-center gap-[3px] mt-2 px-1">
+								{flattenTree(headings)
+									.slice(0, 40)
+									.map((node) => (
+										<button
+											key={
+												node.id
+											}
+											type="button"
+											onClick={() => {
+												navigateTo(
+													node.id,
+												);
+											}}
+											className={cn(
+												"rounded-full transition-colors cursor-pointer",
+												node.level <=
+													2
+													? "w-2.5 h-[3px]"
+													: "w-1.5 h-[3px]",
+												activeId ===
+													node.id
+													? "bg-foreground"
+													: "bg-muted-foreground/20 hover:bg-muted-foreground/50",
+											)}
+											title={
+												node.text
+											}
+										/>
+									))}
 							</div>
-							<div className="flex-1 min-h-0 pt-2">
-								{outlineContent}
-							</div>
-						</nav>
-					</div>
-				)}
-			</div>
+						)}
+
+						{/* Expanded: full outline */}
+						{isExpanded && outlineContent}
+					</nav>
+				</div>
+			) : null}
+
+			{!isPersistentOutline ? (
+				<div>
+					{/* Floating button */}
+					{!mobileOpen && (
+						<button
+							type="button"
+							onClick={() => setMobileOpen(true)}
+							className="fixed bottom-4 right-4 z-40 p-2.5 rounded-full bg-background border border-border shadow-lg text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+							title="Document outline"
+						>
+							<List className="w-4 h-4" />
+						</button>
+					)}
+
+					{/* Drawer overlay */}
+					{mobileOpen && (
+						<div
+							className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+							onClick={() => setMobileOpen(false)}
+							onKeyDown={(e) => {
+								if (e.key === "Escape")
+									setMobileOpen(false);
+							}}
+						>
+							<nav
+								role="navigation"
+								aria-label="Document outline"
+								className="absolute right-0 top-0 bottom-0 w-[280px] bg-background border-l border-border shadow-xl flex flex-col"
+								onClick={(e) => e.stopPropagation()}
+							>
+								<div className="flex items-center justify-between px-3 py-2.5 border-b border-border/50 shrink-0">
+									<span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/60">
+										Outline
+									</span>
+									<button
+										type="button"
+										onClick={() =>
+											setMobileOpen(
+												false,
+											)
+										}
+										className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors cursor-pointer"
+									>
+										<X className="w-4 h-4" />
+									</button>
+								</div>
+								<div className="flex-1 min-h-0 pt-2">
+									{outlineContent}
+								</div>
+							</nav>
+						</div>
+					)}
+				</div>
+			) : null}
 		</>
 	);
 }

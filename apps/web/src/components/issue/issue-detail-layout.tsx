@@ -1,6 +1,10 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from "react";
+import { PanelRight } from "lucide-react";
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import { cn } from "@/lib/utils";
 
 interface IssueDetailLayoutProps {
@@ -16,9 +20,24 @@ export function IssueDetailLayout({
 	commentForm,
 	sidebar,
 }: IssueDetailLayoutProps) {
+	const { width } = useResponsiveSurfaceContext();
 	const scrollRef = useRef<HTMLDivElement>(null);
+	const previousModeRef = useRef<"bottomSheet" | "persistent" | "rightSheet" | null>(null);
 	const [canScrollUp, setCanScrollUp] = useState(false);
 	const [canScrollDown, setCanScrollDown] = useState(false);
+	const [sheetOpen, setSheetOpen] = useState(false);
+	const sidebarDecision = getResponsiveSurfaceDecision({
+		routeKind: "issueDetail",
+		surfaceId: "metadataSidebar",
+		viewportWidth: width,
+	});
+	const sidebarMode =
+		sidebarDecision.mode === "persistent"
+			? "persistent"
+			: sidebarDecision.mode === "bottomSheet"
+				? "bottomSheet"
+				: "rightSheet";
+	const isPersistentSidebar = !!sidebar && sidebarMode === "persistent";
 
 	const updateScrollState = useCallback(() => {
 		const el = scrollRef.current;
@@ -40,9 +59,48 @@ export function IssueDetailLayout({
 		};
 	}, [updateScrollState]);
 
+	useEffect(() => {
+		if (!sidebar) {
+			setSheetOpen(false);
+			previousModeRef.current = null;
+			return;
+		}
+
+		const previousMode = previousModeRef.current;
+
+		if (previousMode === null) {
+			previousModeRef.current = sidebarMode;
+			return;
+		}
+
+		if (previousMode === sidebarMode) return;
+
+		if (previousMode === "persistent") {
+			setSheetOpen(true);
+		}
+
+		if (sidebarMode === "persistent" && sheetOpen) {
+			setSheetOpen(false);
+		}
+
+		previousModeRef.current = sidebarMode;
+	}, [sidebar, sidebarMode, sheetOpen]);
+
 	return (
 		<div className="flex-1 min-h-0 flex flex-col">
 			<div className="shrink-0 pt-3">{header}</div>
+			{sidebar && !isPersistentSidebar ? (
+				<div className="shrink-0 pt-3">
+					<button
+						type="button"
+						onClick={() => setSheetOpen(true)}
+						className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px] font-mono text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors cursor-pointer"
+					>
+						<PanelRight className="w-3.5 h-3.5" />
+						Details
+					</button>
+				</div>
+			) : null}
 
 			<div className="flex-1 min-h-0 flex gap-6">
 				{/* Main thread */}
@@ -66,13 +124,6 @@ export function IssueDetailLayout({
 						className="h-full overflow-y-auto pb-8 pl-1 pr-4"
 					>
 						<div>
-							{/* Mobile sidebar */}
-							{sidebar && (
-								<div className="lg:hidden space-y-5 mb-6 pb-4 border-b border-border/40">
-									{sidebar}
-								</div>
-							)}
-
 							<div className="space-y-3">{timeline}</div>
 
 							{commentForm && (
@@ -85,12 +136,51 @@ export function IssueDetailLayout({
 				</div>
 
 				{/* Right sidebar */}
-				{sidebar && (
-					<div className="hidden lg:block w-[240px] xl:w-[280px] 2xl:w-[320px] shrink-0 border-l border-border/40 pl-6 overflow-y-auto pb-8">
+				{sidebar && isPersistentSidebar && (
+					<div className="w-[240px] xl:w-[280px] 2xl:w-[320px] shrink-0 border-l border-border/40 pl-6 overflow-y-auto pb-8">
 						<div className="space-y-5 pt-1">{sidebar}</div>
 					</div>
 				)}
 			</div>
+			{sidebar && !isPersistentSidebar ? (
+				<Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+					<SheetContent
+						side={
+							sidebarMode === "bottomSheet"
+								? "bottom"
+								: "right"
+						}
+						title="Details"
+						showCloseButton={false}
+						className={cn(
+							"flex flex-col gap-0 p-0",
+							sidebarMode === "bottomSheet"
+								? "max-h-[78dvh] rounded-t-2xl border-t border-l-0"
+								: "w-[min(92vw,22rem)] max-w-[22rem]",
+						)}
+					>
+						<div className="shrink-0 border-b border-border/60 px-4 py-3">
+							<div className="flex items-center justify-between gap-3">
+								<span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/60">
+									Details
+								</span>
+								<button
+									type="button"
+									onClick={() =>
+										setSheetOpen(false)
+									}
+									className="rounded-md px-2 py-1 text-[11px] font-mono text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors cursor-pointer"
+								>
+									Close
+								</button>
+							</div>
+						</div>
+						<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+							<div className="space-y-5">{sidebar}</div>
+						</div>
+					</SheetContent>
+				</Sheet>
+			) : null}
 		</div>
 	);
 }

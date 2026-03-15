@@ -2,11 +2,13 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { X, Code2, ChevronRight, Ghost, Plus } from "lucide-react";
+import { X, Code2, Ghost, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIChat } from "@/components/shared/ai-chat";
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
 import { useGlobalChat, type InlineContext } from "@/components/shared/global-chat-provider";
-import { useIsMobile } from "@/hooks/use-is-mobile";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import {
 	searchRepoFiles,
 	fetchFileContentForContext,
@@ -178,7 +180,7 @@ export function GlobalChatPanel() {
 	const prevContextKeyRef = useRef<string | null>(null);
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
-	const isMobile = useIsMobile();
+	const { width } = useResponsiveSurfaceContext();
 
 	// Defer rendering until after hydration — this panel starts hidden (translate-x-full)
 	// and depends on client-only state (chat history, persisted context), so SSR is pointless
@@ -404,6 +406,34 @@ export function GlobalChatPanel() {
 		: pageHints.description;
 
 	const effectiveSuggestions = hasPageContext ? state.suggestions : pageHints.suggestions;
+	const routeKind = useMemo(() => {
+		if (/\/blob\//.test(pathname)) return "repoDocument";
+		if (/\/(code|tree)\b/.test(pathname)) return "repoCode";
+		if (/\/pulls\/\d+/.test(pathname)) return "prDetail";
+		if (/\/issues\/\d+/.test(pathname) || /\/discussions\/\d+/.test(pathname))
+			return "issueDetail";
+		if (matchRepoFromPathname(pathname)) return "repoOverview";
+		if (
+			pathname.startsWith("/prs") ||
+			pathname.startsWith("/issues") ||
+			pathname.startsWith("/notifications")
+		)
+			return "listWithPeek";
+		return "dashboard";
+	}, [pathname]);
+	const panelDecision = getResponsiveSurfaceDecision({
+		routeKind,
+		surfaceId: "ghostChat",
+		viewportWidth: width,
+	});
+	const isBottomSheet = panelDecision.mode === "bottomSheet";
+	const panelWidthStyle =
+		!isBottomSheet && width > 0
+			? {
+					width: Math.min(panelWidth, Math.max(320, width - 24)),
+				}
+			: undefined;
+	const canResizePanel = !isBottomSheet && width >= 1024;
 
 	// ── Tab state (from context, persisted server-side) ────────────────────
 
@@ -476,248 +506,263 @@ export function GlobalChatPanel() {
 	if (!mounted) return null;
 
 	return (
-		<>
-			<div
+		<Sheet
+			open={state.isOpen}
+			onOpenChange={(open) => {
+				if (!open) {
+					closeChat();
+				}
+			}}
+		>
+			<SheetContent
+				side={isBottomSheet ? "bottom" : "right"}
+				title="Ghost"
+				showCloseButton={false}
 				className={cn(
-					"fixed top-10 right-0 z-40 h-[calc(100dvh-2.5rem)] w-full",
-					"bg-background border-l border-border",
-					"flex flex-row shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.25)]",
-					"transition-transform duration-300 ease-in-out",
-					state.isOpen
-						? "translate-x-0"
-						: "translate-x-full pointer-events-none",
+					"gap-0 p-0",
+					isBottomSheet
+						? "max-h-[80dvh] rounded-t-2xl border-t border-l-0 border-border"
+						: "top-10 h-[calc(100dvh-2.5rem)] max-w-none border-l border-border shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.25)]",
 				)}
-				style={{ maxWidth: panelWidth }}
+				style={panelWidthStyle}
 			>
-				{/* Resize drag handle */}
-				<div
-					onMouseDown={handleResizeStart}
-					className="hidden sm:flex shrink-0 w-1 cursor-col-resize hover:bg-foreground/10 active:bg-foreground/15 transition-colors"
-				/>
+				<div className="flex min-h-0 flex-1 flex-row">
+					{canResizePanel && (
+						<div
+							onMouseDown={handleResizeStart}
+							className="hidden shrink-0 w-1 cursor-col-resize hover:bg-foreground/10 active:bg-foreground/15 transition-colors lg:flex"
+						/>
+					)}
 
-				{/* Panel content */}
-				<div className="flex-1 min-w-0 flex flex-col">
-					{/* Side close tab */}
-					<button
-						type="button"
-						onClick={closeChat}
-						className={cn(
-							"absolute -left-6 top-1/2 -translate-y-1/2 z-10",
-							"flex items-center justify-center pl-1 pr-0.5",
-							"w-6 h-10 rounded-l-full",
-							"bg-background border border-r-0 border-border/15",
-							"text-muted-foreground hover:text-foreground",
-							"cursor-pointer transition-all duration-200",
-							!state.isOpen && "hidden",
-						)}
-					>
-						<ChevronRight className="w-3 h-3" />
-					</button>
+					{/* Panel content */}
+					<div className="flex-1 min-w-0 flex flex-col">
+						{/* Panel header */}
+						<div className="group/header shrink-0 flex items-center gap-1.5 pl-3 pr-2 py-1.5 border-b border-border/60">
+							{!isBottomSheet && (
+								<span
+									aria-hidden
+									className="w-3 shrink-0"
+								/>
+							)}
+							<Ghost className="w-3.5 h-3.5 text-foreground/50" />
+							<span className="text-xs font-medium text-foreground/70 truncate">
+								Ghost
+							</span>
+							<button
+								type="button"
+								onClick={closeChat}
+								className="ml-auto rounded-md p-0.5 text-muted-foreground hover:bg-accent/60 hover:text-foreground transition-all duration-150 cursor-pointer"
+							>
+								<X className="w-3 h-3" />
+							</button>
+						</div>
 
-					{/* Panel header */}
-					<div className="group/header shrink-0 flex items-center gap-1.5 pl-3 pr-2 py-1.5 border-b border-border/60">
-						<Ghost className="w-3.5 h-3.5 text-foreground/50" />
-						<span className="text-xs font-medium text-foreground/70 truncate">
-							Ghost
-						</span>
-						<button
-							type="button"
-							onClick={closeChat}
-							className="ml-auto p-0.5  rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-150 cursor-pointer"
-						>
-							<X className="w-3 h-3" />
-						</button>
-					</div>
-
-					{/* Tab bar */}
-					<div className="shrink-0 flex items-center px-1.5">
-						<div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
-							{tabState.tabs.map((tab) => (
-								<button
-									key={tab.id}
-									type="button"
-									onClick={() =>
-										switchTab(tab.id)
-									}
-									className={cn(
-										"group flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium shrink-0 transition-all duration-150 cursor-pointer border-b-2",
-										tab.id ===
-											activeTabId
-											? "border-foreground/60 text-foreground/70"
-											: "border-transparent text-muted-foreground hover:text-muted-foreground",
-									)}
-								>
-									<span className="truncate max-w-[120px]">
-										{tab.label.includes(
-											" · ",
-										) ? (
-											<>
-												{
-													tab.label.split(
-														" · ",
-													)[0]
-												}
-												<span className="opacity-40">
-													{" "}
-													·{" "}
+						{/* Tab bar */}
+						<div className="shrink-0 flex items-center px-1.5">
+							<div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto no-scrollbar">
+								{tabState.tabs.map((tab) => (
+									<button
+										key={tab.id}
+										type="button"
+										onClick={() =>
+											switchTab(
+												tab.id,
+											)
+										}
+										className={cn(
+											"group flex items-center gap-1 px-2 py-1.5 text-[11px] font-medium shrink-0 transition-all duration-150 cursor-pointer border-b-2",
+											tab.id ===
+												activeTabId
+												? "border-foreground/60 text-foreground/70"
+												: "border-transparent text-muted-foreground hover:text-muted-foreground",
+										)}
+									>
+										<span className="truncate max-w-[120px]">
+											{tab.label.includes(
+												" · ",
+											) ? (
+												<>
 													{
 														tab.label.split(
 															" · ",
-														)[1]
+														)[0]
 													}
-												</span>
-											</>
-										) : (
-											tab.label
-										)}
-									</span>
-									{tabState.tabs.length >
-										1 && (
-										<span
-											role="button"
-											tabIndex={0}
-											onClick={(
-												e,
-											) => {
-												e.stopPropagation();
-												closeTab(
-													tab.id,
-												);
-											}}
-											onKeyDown={(
-												e,
-											) => {
-												if (
-													e.key ===
-													"Enter"
-												) {
+													<span className="opacity-40">
+														{" "}
+														·{" "}
+														{
+															tab.label.split(
+																" · ",
+															)[1]
+														}
+													</span>
+												</>
+											) : (
+												tab.label
+											)}
+										</span>
+										{tabState.tabs
+											.length >
+											1 && (
+											<span
+												role="button"
+												tabIndex={
+													0
+												}
+												onClick={(
+													e,
+												) => {
 													e.stopPropagation();
 													closeTab(
 														tab.id,
 													);
-												}
-											}}
-											className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-foreground/10 dark:hover:bg-white/10 transition-opacity cursor-pointer"
-										>
-											<X className="w-2 h-2" />
-										</span>
-									)}
-								</button>
-							))}
-						</div>
-						<button
-							type="button"
-							onClick={() =>
-								addTab(
-									getTabLabelFromPathname(
-										pathname,
-									),
-								)
-							}
-							className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-150 cursor-pointer ml-1"
-							title="New tab"
-						>
-							<Plus className="w-3 h-3" />
-						</button>
-					</div>
-
-					{/* Chat content — render all tabs, show only active */}
-					{tabState.tabs.map((tab) => {
-						const isActive = tab.id === activeTabId;
-						return (
-							<div
-								key={tab.id}
-								className={cn(
-									"flex-1 min-h-0 flex flex-col",
-									!isActive && "hidden",
-								)}
-							>
-								<AIChat
-									apiEndpoint="/api/ai/ghost"
-									contextBody={contextBody}
-									contextKey={
-										effectiveContextKey
-									}
-									persistKey={`${effectiveContextKey}::${tab.id}`}
-									chatType={effectiveChatType}
-									placeholder={
-										effectivePlaceholder
-									}
-									emptyTitle={
-										effectiveEmptyTitle
-									}
-									emptyDescription={
-										effectiveEmptyDescription
-									}
-									suggestions={
-										effectiveSuggestions
-									}
-									inputPrefix={
-										isActive
-											? inputPrefix
-											: null
-									}
-									onNewChat={() => {
-										setContexts([]);
-										const label =
-											getTabLabelFromPathname(
-												pathname,
-											);
-										if (
-											label &&
-											activeTabId
-										)
-											renameTab(
-												activeTabId,
-												label,
-											);
-									}}
-									mentionableFiles={
-										mentionableFiles
-									}
-									onAddFileContext={
-										handleAddFileContext
-									}
-									attachedContexts={
-										isActive
-											? contexts
-											: []
-									}
-									onContextsConsumed={() =>
-										setContexts([])
-									}
-									onSearchRepoFiles={
-										repoFileSearch
-											? handleSearchRepoFiles
-											: undefined
-									}
-									onFetchFileContent={
-										repoFileSearch
-											? handleFetchFileContent
-											: undefined
-									}
-									hashMentionPrFiles={
-										mentionableFiles
-									}
-									autoFocus={
-										isActive &&
-										!isMobile
-									}
-									historyItems={ghostHistory}
-									onLoadHistory={
-										handleLoadHistory
-									}
-									onNavigateToFile={
-										mentionableFiles
-											? handleNavigateToFile
-											: undefined
-									}
-								/>
+												}}
+												onKeyDown={(
+													e,
+												) => {
+													if (
+														e.key ===
+														"Enter"
+													) {
+														e.stopPropagation();
+														closeTab(
+															tab.id,
+														);
+													}
+												}}
+												className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-foreground/10 dark:hover:bg-white/10 transition-opacity cursor-pointer"
+											>
+												<X className="w-2 h-2" />
+											</span>
+										)}
+									</button>
+								))}
 							</div>
-						);
-					})}
+							<button
+								type="button"
+								onClick={() =>
+									addTab(
+										getTabLabelFromPathname(
+											pathname,
+										),
+									)
+								}
+								className="shrink-0 p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-all duration-150 cursor-pointer ml-1"
+								title="New tab"
+							>
+								<Plus className="w-3 h-3" />
+							</button>
+						</div>
+
+						{/* Chat content — render all tabs, show only active */}
+						{tabState.tabs.map((tab) => {
+							const isActive = tab.id === activeTabId;
+							return (
+								<div
+									key={tab.id}
+									className={cn(
+										"flex-1 min-h-0 flex flex-col",
+										!isActive &&
+											"hidden",
+									)}
+								>
+									<AIChat
+										apiEndpoint="/api/ai/ghost"
+										contextBody={
+											contextBody
+										}
+										contextKey={
+											effectiveContextKey
+										}
+										persistKey={`${effectiveContextKey}::${tab.id}`}
+										chatType={
+											effectiveChatType
+										}
+										placeholder={
+											effectivePlaceholder
+										}
+										emptyTitle={
+											effectiveEmptyTitle
+										}
+										emptyDescription={
+											effectiveEmptyDescription
+										}
+										suggestions={
+											effectiveSuggestions
+										}
+										inputPrefix={
+											isActive
+												? inputPrefix
+												: null
+										}
+										onNewChat={() => {
+											setContexts(
+												[],
+											);
+											const label =
+												getTabLabelFromPathname(
+													pathname,
+												);
+											if (
+												label &&
+												activeTabId
+											)
+												renameTab(
+													activeTabId,
+													label,
+												);
+										}}
+										mentionableFiles={
+											mentionableFiles
+										}
+										onAddFileContext={
+											handleAddFileContext
+										}
+										attachedContexts={
+											isActive
+												? contexts
+												: []
+										}
+										onContextsConsumed={() =>
+											setContexts(
+												[],
+											)
+										}
+										onSearchRepoFiles={
+											repoFileSearch
+												? handleSearchRepoFiles
+												: undefined
+										}
+										onFetchFileContent={
+											repoFileSearch
+												? handleFetchFileContent
+												: undefined
+										}
+										hashMentionPrFiles={
+											mentionableFiles
+										}
+										autoFocus={
+											isActive &&
+											!isBottomSheet
+										}
+										historyItems={
+											ghostHistory
+										}
+										onLoadHistory={
+											handleLoadHistory
+										}
+										onNavigateToFile={
+											mentionableFiles
+												? handleNavigateToFile
+												: undefined
+										}
+									/>
+								</div>
+							);
+						})}
+					</div>
 				</div>
-			</div>
-		</>
+			</SheetContent>
+		</Sheet>
 	);
 }

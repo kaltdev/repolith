@@ -74,7 +74,12 @@ export function NotificationSheet({
 			<SheetContent
 				side={isMobile ? "bottom" : "right"}
 				showCloseButton={false}
-				className="p-0 rounded-t-xl max-sm:max-h-[70vh] flex flex-col border-t border-border"
+				className={cn(
+					"flex flex-col p-0",
+					isMobile
+						? "max-h-[70vh] rounded-t-xl border-t border-l-0 border-border"
+						: "w-[min(92vw,26rem)] max-w-[26rem]",
+				)}
 				title="Notifications"
 			>
 				{/* Header */}

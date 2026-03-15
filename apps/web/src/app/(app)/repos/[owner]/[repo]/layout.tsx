@@ -3,9 +3,11 @@ import { countPromptRequests } from "@/lib/prompt-request-store";
 import { buildFileTree, type FileTreeNode } from "@/lib/file-tree";
 import { RepoSidebar } from "@/components/repo/repo-sidebar";
 import { RepoNav } from "@/components/repo/repo-nav";
-import { ForkSyncButton } from "@/components/repo/fork-sync-button";
+import { ForkButton } from "@/components/repo/fork-button";
 import { CodeContentWrapper } from "@/components/repo/code-content-wrapper";
+import { PinButton } from "@/components/repo/pin-button";
 import { RepoLayoutWrapper } from "@/components/repo/repo-layout-wrapper";
+import { StarButton } from "@/components/repo/star-button";
 import { ChatPageActivator } from "@/components/shared/chat-page-activator";
 import { RepoRevalidator } from "@/components/repo/repo-revalidator";
 import { cookies } from "next/headers";
@@ -178,6 +180,10 @@ export default async function RepoLayout({
 
 	return (
 		<div className="-mx-4 flex-1 min-h-0 flex flex-col">
+			{/*
+				Render summary and panel variants separately so the shell can reuse the
+				full repo sidebar inside a sheet on smaller viewports.
+			*/}
 			<RepoLayoutWrapper
 				owner={owner}
 				repo={repoName}
@@ -185,6 +191,79 @@ export default async function RepoLayout({
 				ownerAvatarUrl={repoData.owner.avatar_url}
 				initialCollapsed={sidebarState?.collapsed}
 				initialWidth={sidebarState?.width}
+				summary={
+					<>
+						<RepoSidebar
+							owner={owner}
+							repoName={repoName}
+							ownerType={repoData.owner.type}
+							avatarUrl={repoData.owner.avatar_url}
+							description={repoData.description ?? null}
+							stars={repoData.stargazers_count}
+							forks={repoData.forks_count}
+							watchers={repoData.subscribers_count}
+							openIssuesCount={navCounts.openIssues}
+							isPrivate={repoData.private}
+							defaultBranch={repoData.default_branch}
+							language={repoData.language}
+							license={repoData.license}
+							pushedAt={repoData.pushed_at}
+							size={repoData.size}
+							htmlUrl={repoData.html_url}
+							homepage={repoData.homepage}
+							topics={repoData.topics}
+							archived={repoData.archived}
+							fork={repoData.fork}
+							parent={
+								parent
+									? {
+											fullName: parent.full_name,
+											owner: parent
+												.owner
+												.login,
+											name: parent.name,
+										}
+									: null
+							}
+							initialContributors={cachedContributors}
+							initialLanguages={cachedLanguages}
+							isStarred={viewerHasStarred}
+							disableForkButton={isViewingOwnFork}
+							latestCommit={latestCommit}
+							isOwnFork={isViewingOwnFork}
+							forkSyncStatus={forkSyncStatus}
+							isEmptyRepo={isEmptyRepo}
+							variant="summary"
+						/>
+					</>
+				}
+				summaryActions={
+					<>
+						<StarButton
+							owner={owner}
+							repo={repoName}
+							starred={viewerHasStarred}
+							starCount={repoData.stargazers_count}
+							size="compact"
+						/>
+						<ForkButton
+							owner={owner}
+							repo={repoName}
+							forkCount={repoData.forks_count}
+							disabled={isViewingOwnFork}
+							size="compact"
+						/>
+						<PinButton
+							owner={owner}
+							repo={repoName}
+							language={repoData.language}
+							stargazers_count={repoData.stargazers_count}
+							isPrivate={repoData.private}
+							avatarUrl={repoData.owner.avatar_url}
+							size="compact"
+						/>
+					</>
+				}
 				sidebar={
 					<RepoSidebar
 						owner={owner}
@@ -225,6 +304,7 @@ export default async function RepoLayout({
 						isOwnFork={isViewingOwnFork}
 						forkSyncStatus={forkSyncStatus}
 						isEmptyRepo={isEmptyRepo}
+						variant="panel"
 					/>
 				}
 			>
@@ -232,19 +312,6 @@ export default async function RepoLayout({
 					className="shrink-0 pl-4"
 					style={{ paddingRight: "var(--repo-pr, 1rem)" }}
 				>
-					{isViewingOwnFork && forkSyncStatus && (
-						<div className="lg:hidden pb-2">
-							<ForkSyncButton
-								owner={owner}
-								repo={repoName}
-								defaultBranch={
-									repoData.default_branch
-								}
-								behind={forkSyncStatus.behind}
-								parentFullName={parent?.full_name}
-							/>
-						</div>
-					)}
 					<RepoNav
 						owner={owner}
 						repo={repoName}

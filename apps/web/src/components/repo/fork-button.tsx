@@ -11,12 +11,20 @@ interface ForkButtonProps {
 	repo: string;
 	forkCount: number;
 	disabled?: boolean;
+	size?: "default" | "compact";
 }
 
-export function ForkButton({ owner, repo, forkCount, disabled = false }: ForkButtonProps) {
+export function ForkButton({
+	owner,
+	repo,
+	forkCount,
+	disabled = false,
+	size = "default",
+}: ForkButtonProps) {
 	const router = useRouter();
 	const [isPending, startTransition] = useTransition();
 	const [error, setError] = useState<string | null>(null);
+	const isCompact = size === "compact";
 
 	const handleFork = () => {
 		if (disabled || isPending) return;
@@ -34,25 +42,44 @@ export function ForkButton({ owner, repo, forkCount, disabled = false }: ForkBut
 	};
 
 	return (
-		<div className="flex flex-col items-center">
+		<div className={cn("flex flex-col", isCompact ? "items-start" : "items-center")}>
 			<button
+				type="button"
 				onClick={handleFork}
 				disabled={isPending || disabled}
 				className={cn(
-					"flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 text-muted-foreground rounded-md transition-colors w-full",
+					"inline-flex items-center justify-center gap-1.5 font-mono transition-colors",
+					isCompact
+						? "h-8 rounded-full bg-muted/55 px-3 text-[11px] text-muted-foreground"
+						: "w-full rounded-md py-1.5 text-[11px] text-muted-foreground",
 					!(isPending || disabled) &&
-						"cursor-pointer hover:text-foreground",
+						"cursor-pointer hover:text-foreground hover:bg-muted",
 					(isPending || disabled) &&
 						"text-muted-foreground/60 pointer-events-none cursor-not-allowed",
 				)}
 			>
 				{isPending ? (
-					<Loader2 className="w-3 h-3 animate-spin" />
+					<Loader2
+						className={cn(
+							isCompact ? "w-3.5 h-3.5" : "w-3 h-3",
+							"animate-spin",
+						)}
+					/>
 				) : (
-					<GitFork className="w-3 h-3" />
+					<GitFork
+						className={cn(
+							isCompact ? "w-3.5 h-3.5" : "w-3 h-3",
+						)}
+					/>
 				)}
 				{isPending ? "Forking..." : "Fork"}
-				<span className="text-muted-foreground/50 tabular-nums">
+				<span
+					className={cn(
+						isCompact
+							? "text-[10px] text-muted-foreground/55 tabular-nums"
+							: "text-muted-foreground/50 tabular-nums",
+					)}
+				>
 					{formatNumber(forkCount)}
 				</span>
 			</button>

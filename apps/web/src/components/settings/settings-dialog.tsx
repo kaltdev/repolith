@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import { SettingsContent } from "./settings-content";
@@ -49,6 +50,8 @@ export function SettingsDialog({
 	user,
 	githubProfile,
 }: SettingsDialogProps) {
+	const { viewport } = useResponsiveSurfaceContext();
+	const isCompactViewport = viewport !== "desktop";
 	const {
 		data: settings,
 		isPending,
@@ -87,7 +90,13 @@ export function SettingsDialog({
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
 			<DialogContent
-				className="sm:max-w-2xl p-0 gap-0 overflow-hidden max-h-[85vh] outline-none"
+				className={
+					viewport === "phone"
+						? "h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none gap-0 overflow-hidden p-0 outline-none"
+						: viewport === "tablet" || viewport === "wideTablet"
+							? "max-h-[calc(100dvh-2rem)] w-[min(48rem,calc(100vw-2rem))] max-w-none gap-0 overflow-hidden p-0 outline-none"
+							: "max-h-[85vh] gap-0 overflow-hidden p-0 outline-none sm:max-w-2xl"
+				}
 				showCloseButton={false}
 				onPointerDownOutside={handleInteractOutside}
 				onInteractOutside={handleInteractOutside}
@@ -95,7 +104,13 @@ export function SettingsDialog({
 				<VisuallyHidden.Root>
 					<DialogTitle>Settings</DialogTitle>
 				</VisuallyHidden.Root>
-				<div className="flex flex-col max-h-[85vh] min-h-[26rem]">
+				<div
+					className={
+						isCompactViewport
+							? "flex min-h-0 h-full flex-col"
+							: "flex min-h-[26rem] max-h-[85vh] flex-col"
+					}
+				>
 					{settings && !isError ? (
 						<SettingsContent
 							key={initialTab}

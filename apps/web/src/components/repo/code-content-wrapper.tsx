@@ -1,11 +1,14 @@
 "use client";
 
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { PanelLeft, Copy, Check, Download, Monitor } from "lucide-react";
+import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { type FileTreeNode } from "@/lib/file-tree";
 import { parseRefAndPath } from "@/lib/github-utils";
+import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import { FileExplorerTree } from "./file-explorer-tree";
 import { BranchSelector } from "./branch-selector";
 import { BreadcrumbNav } from "./breadcrumb-nav";
@@ -55,7 +58,7 @@ function CloneDownloadButtons({
 	}
 
 	return (
-		<div className="relative ml-auto flex items-center">
+		<div className="relative flex items-center sm:ml-auto">
 			<div className="flex items-center rounded-md border border-border overflow-hidden divide-x divide-border">
 				<button
 					onClick={() => setShowClone(!showClone)}
@@ -151,6 +154,7 @@ export function CodeContentWrapper({
 	children,
 }: CodeContentWrapperProps) {
 	const pathname = usePathname();
+	const { width } = useResponsiveSurfaceContext();
 	const base = `/${owner}/${repo}`;
 
 	const isCodeRoute =
@@ -190,6 +194,14 @@ export function CodeContentWrapper({
 
 	const isBlobOrTree =
 		pathname.startsWith(`${base}/blob`) || pathname.startsWith(`${base}/tree`);
+	const routeKind = pathname.startsWith(`${base}/blob`) ? "repoDocument" : "repoCode";
+	const explorerDecision = getResponsiveSurfaceDecision({
+		routeKind,
+		surfaceId: "fileExplorer",
+		viewportWidth: width,
+	});
+	const explorerMode = explorerDecision.mode === "persistent" ? "persistent" : "leftSheet";
+	const isPersistentExplorer = showTree && explorerMode === "persistent";
 
 	// Parse ref and path from URL for blob/tree routes
 	const { currentRef, currentPath, pathType } = useMemo(() => {
@@ -222,10 +234,40 @@ export function CodeContentWrapper({
 	}, [pathname, base, isBlobOrTree, branches, tags, defaultBranch]);
 
 	const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+	const [sheetOpen, setSheetOpen] = useState(false);
 	const lastOpenWidthRef = useRef(DEFAULT_WIDTH);
 	const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
+	const previousModeRef = useRef<"leftSheet" | "persistent" | null>(null);
 
 	const collapsed = sidebarWidth === 0;
+
+	useEffect(() => {
+		if (!showTree) {
+			setSheetOpen(false);
+			previousModeRef.current = null;
+			return;
+		}
+
+		const previousMode = previousModeRef.current;
+
+		if (previousMode === null) {
+			previousModeRef.current = explorerMode;
+			return;
+		}
+
+		if (previousMode === explorerMode) return;
+
+		if (previousMode === "persistent" && sidebarWidth > 0) {
+			setSheetOpen(true);
+		}
+
+		if (explorerMode === "persistent" && sheetOpen) {
+			setSidebarWidth(lastOpenWidthRef.current || DEFAULT_WIDTH);
+			setSheetOpen(false);
+		}
+
+		previousModeRef.current = explorerMode;
+	}, [explorerMode, sheetOpen, showTree, sidebarWidth]);
 
 	const handleDragStart = useCallback(
 		(e: React.MouseEvent) => {
@@ -265,16 +307,28 @@ export function CodeContentWrapper({
 	);
 
 	const handleExpand = useCallback(() => {
+		if (!isPersistentExplorer) {
+			setSheetOpen(true);
+			return;
+		}
 		setSidebarWidth(lastOpenWidthRef.current || DEFAULT_WIDTH);
-	}, []);
+	}, [isPersistentExplorer]);
+
+	const handleCloseExplorer = useCallback(() => {
+		if (isPersistentExplorer) {
+			setSidebarWidth(0);
+			return;
+		}
+		setSheetOpen(false);
+	}, [isPersistentExplorer]);
 
 	return (
 		<div className="flex flex-1 min-h-0">
 			{showTree && (
 				<>
 					{/* Collapsed toggle */}
-					{collapsed && (
-						<div className="hidden lg:flex shrink-0 flex-col items-center pt-2 pl-4 pr-0.5">
+					{isPersistentExplorer && collapsed && (
+						<div className="shrink-0 flex flex-col items-center pt-2 pl-4 pr-0.5">
 							<button
 								type="button"
 								onClick={handleExpand}
@@ -287,9 +341,9 @@ export function CodeContentWrapper({
 					)}
 
 					{/* Sidebar */}
-					{!collapsed && (
+					{isPersistentExplorer && !collapsed && (
 						<div
-							className="hidden lg:flex shrink-0 border-r border-border flex-col min-h-0 overflow-hidden pl-4"
+							className="flex shrink-0 flex-col overflow-hidden border-r border-border pl-4 min-h-0"
 							style={{ width: sidebarWidth }}
 						>
 							<FileExplorerTree
@@ -302,22 +356,85 @@ export function CodeContentWrapper({
 					)}
 
 					{/* Drag handle — only when open */}
-					{!collapsed && (
+					{isPersistentExplorer && !collapsed && (
 						<div
 							onMouseDown={handleDragStart}
-							className="hidden lg:flex w-1 shrink-0 cursor-col-resize items-center justify-center hover:bg-foreground/10 active:bg-foreground/15 transition-colors group"
+							className="flex w-1 shrink-0 cursor-col-resize items-center justify-center hover:bg-foreground/10 active:bg-foreground/15 transition-colors group"
 						>
 							<div className="w-[2px] h-8 rounded-full bg-border group-hover:bg-foreground/20 group-active:bg-foreground/30 transition-colors" />
 						</div>
 					)}
+
+					{!isPersistentExplorer && (
+						<Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+							<SheetContent
+								side="left"
+								title="Files"
+								className="w-[min(88vw,22rem)] max-w-[22rem] gap-0 p-0"
+								showCloseButton={false}
+							>
+								<div className="shrink-0 border-b border-border/60 px-4 py-3">
+									<div className="flex items-center justify-between gap-3">
+										<span className="text-[11px] font-mono uppercase tracking-wider text-muted-foreground/60">
+											Files
+										</span>
+										<button
+											type="button"
+											onClick={
+												handleCloseExplorer
+											}
+											className="rounded-md px-2 py-1 text-[11px] font-mono text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors cursor-pointer"
+										>
+											Close
+										</button>
+									</div>
+								</div>
+								<div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+									<FileExplorerTree
+										tree={tree}
+										owner={owner}
+										repo={repo}
+										defaultBranch={
+											defaultBranch
+										}
+									/>
+								</div>
+							</SheetContent>
+						</Sheet>
+					)}
 				</>
 			)}
 			<div className="flex-1 min-w-0 flex flex-col min-h-0">
-				{isBlobOrTree && (
+				{showTree && !isBlobOrTree && !isPersistentExplorer && (
 					<div
-						className="shrink-0 pl-4 pt-3 pb-3 flex items-center gap-3"
+						className="shrink-0 px-4 pt-3 pb-2"
 						style={{ paddingRight: "var(--repo-pr, 1rem)" }}
 					>
+						<button
+							type="button"
+							onClick={handleExpand}
+							className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px] font-mono text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors cursor-pointer"
+						>
+							<PanelLeft className="w-3.5 h-3.5" />
+							Files
+						</button>
+					</div>
+				)}
+				{isBlobOrTree && (
+					<div
+						className="shrink-0 flex flex-wrap items-center gap-3 pl-4 pt-3 pb-3"
+						style={{ paddingRight: "var(--repo-pr, 1rem)" }}
+					>
+						{showTree && !isPersistentExplorer && (
+							<button
+								type="button"
+								onClick={handleExpand}
+								className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-[11px] font-mono text-muted-foreground hover:bg-muted/50 hover:text-foreground transition-colors cursor-pointer"
+							>
+								<PanelLeft className="w-3.5 h-3.5" />
+								Files
+							</button>
+						)}
 						<BranchSelector
 							owner={owner}
 							repo={repo}

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isPinnedRepo, pinRepo, unpinRepo, type PinnedRepo } from "@/lib/pinned-repos";
+import { isPinnedRepo, pinRepo, unpinRepo } from "@/lib/pinned-repos";
 
 interface PinButtonProps {
 	owner: string;
@@ -12,6 +12,7 @@ interface PinButtonProps {
 	stargazers_count: number;
 	isPrivate: boolean;
 	avatarUrl: string;
+	size?: "default" | "compact";
 }
 
 export function PinButton({
@@ -21,8 +22,10 @@ export function PinButton({
 	stargazers_count,
 	isPrivate,
 	avatarUrl,
+	size = "default",
 }: PinButtonProps) {
 	const [isPinned, setIsPinned] = useState(false);
+	const isCompact = size === "compact";
 
 	const fullName = `${owner}/${repo}`;
 
@@ -50,15 +53,31 @@ export function PinButton({
 
 	return (
 		<button
+			type="button"
 			onClick={toggle}
 			className={cn(
-				"flex items-center justify-center gap-1.5 text-[11px] font-mono py-1.5 rounded-md transition-colors cursor-pointer",
+				"inline-flex items-center justify-center gap-1.5 font-mono transition-colors cursor-pointer",
+				isCompact
+					? "h-8 rounded-full bg-muted/55 px-3 text-[11px]"
+					: "rounded-md py-1.5 text-[11px]",
 				isPinned
-					? "border border-foreground/30 text-foreground hover:bg-foreground/10"
-					: "text-muted-foreground hover:text-foreground hover:border-border",
+					? isCompact
+						? "bg-foreground/8 text-foreground hover:bg-foreground/12"
+						: "border border-foreground/30 text-foreground hover:bg-foreground/10"
+					: cn(
+							isCompact
+								? "text-muted-foreground hover:bg-muted"
+								: "text-muted-foreground",
+							"hover:text-foreground hover:border-border",
+						),
 			)}
 		>
-			<Pin className={cn("w-3 h-3", isPinned && "fill-current")} />
+			<Pin
+				className={cn(
+					isCompact ? "w-3.5 h-3.5" : "w-3 h-3",
+					isPinned && "fill-current",
+				)}
+			/>
 			{isPinned ? "Pinned" : "Pin"}
 		</button>
 	);

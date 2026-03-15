@@ -18,6 +18,8 @@ coverage
 # misc
 .DS_Store
 *.pem
+.superpowers
+docs
 
 # debug
 npm-debug.log*

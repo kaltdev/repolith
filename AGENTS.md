@@ -22,7 +22,8 @@ TypeScript is strict at the workspace root. Inside `apps/web`, use the `@/*` ali
 ## Testing Guidelines
 Tests use Bun's built-in runner (`bun:test`) and are colocated as `*.test.ts`. Run `bun test` from the repo root, or target a file such as `bun test "apps/web/src/app/(app)/repos/[owner]/[repo]/commits/actions.test.ts"`. There is no coverage gate in CI, so add focused regression tests for new server actions, utilities, and data transforms, then run `bun check` before opening a PR.
 
-## Commit & Pull Request Guidelines
-Recent history uses type-prefixed, imperative commit subjects with a colon, often capitalized: `Feat: add user follow/unfollow and connections UI`, `Refactor: Split Home Page Into Two-Panel Hero`, `Chore: Update bun.lock for dependency version changes`. Keep that structure, keep subjects concise, and avoid mixing unrelated work.
+## Design Guidelines
+Try to follow the design of the rest of the codebase as much as possible.
+Avoid loading spinners and prefer skeleton UI for loading states.
 
 Open PRs against `main`. Include a short description of what changed and why, link the related issue when there is one, and attach screenshots or short recordings for UI or extension changes. Call out schema, env, or migration changes explicitly.

@@ -134,13 +134,36 @@ These are policy thresholds, not a mandate to replace Tailwind’s built-in `sm`
 
 CSS should continue to use standard Tailwind breakpoints where practical. The policy layer exists to decide surface behavior, not to replace Tailwind.
 
+## Route Coverage Matrix
+
+This pass covers every authenticated route family under `/(app)` either through direct responsive-surface behavior or through shared shell improvements.
+
+| Route family | Examples | RouteKind | Scope in this pass |
+|---|---|---|---|
+| dashboard | `/dashboard` | `dashboard` | Full shell and card/layout responsiveness |
+| global discovery and list pages | `/search`, `/trending`, `/repos`, `/issues`, `/pulls`, `/stars`, `/orgs`, `/users`, `/notifications` | `listWithPeek` | Shared shell, stacked data surfaces, list/peek responsiveness where present |
+| repo overview-style pages | `/repos/[owner]/[repo]`, `/activity`, `/insights`, `/security`, `/releases`, `/tags`, `/discussions`, `/people`, `/prompts`, `/settings` | `repoOverview` | Repo sidebar behavior, card/grid responsiveness, metadata-panel cleanup |
+| repo code browsing pages | `/code`, `/tree/...` | `repoCode` | File explorer policy and technical-content overflow preservation |
+| repo document and commit-detail pages | `/blob/...`, `/commits`, `/commits/[sha]` | `repoDocument` | File explorer or outline behavior plus technical-content overflow preservation |
+| repo issue detail | `/repos/[owner]/[repo]/issues/[number]` | `issueDetail` | Metadata-sidebar responsiveness and main-thread priority |
+| repo PR detail and subroutes | `/repos/[owner]/[repo]/pulls/[number]`, `/pulls/[number]/...` | `prDetail` | Single-primary-surface tablet behavior, desktop split preserved |
+| repo action and comparison pages | `/repos/[owner]/[repo]/actions`, `/actions/[runId]`, `/actions/compare`, `/actions/workflows/...` | `listWithPeek` | Shared shell, stacked metadata panels, technical tables keep overflow |
+| authenticated single-page utilities | `/extension`, `/theme-store`, `/theme-store/[slug]`, `/theme-store/publish` | `modalOnly` | Shared shell and dialog sizing only; no new persistent side-surface work in this pass |
+
+Route families not listed above are out of scope for feature-specific responsive work in this pass and only receive shared shell improvements if they inherit them automatically.
+
 ## Surface Policy Model
 
 ### Policy API
 
-Implementation planning should center on a pure function plus a client hook.
+Implementation planning must center on:
 
-Recommended shape:
+- one pure policy function
+- one shared viewport hook
+- one global surface-state owner in the authenticated app shell
+- one route-local surface-state owner per route wrapper that manages local surfaces
+
+Normative shape:
 
 ```ts
 type ResponsiveViewport = "phone" | "tablet" | "wideTablet" | "desktop";
@@ -161,17 +184,34 @@ type SurfaceId =
 	| "documentOutline"
 	| "ghostChat"
 	| "detailPeek"
-	| "metadataSidebar";
+	| "metadataSidebar"
+	| "notificationsPanel"
+	| "settingsDialog";
 
-type SurfaceMode = "persistent" | "leftSheet" | "rightSheet" | "bottomSheet";
+type SurfaceMode =
+	| "persistent"
+	| "leftSheet"
+	| "rightSheet"
+	| "bottomSheet"
+	| "modalDialog";
 
 type ResponsiveSurfaceContext = {
 	viewportWidth: number;
 	routeKind: RouteKind;
 	surfaceId: SurfaceId;
 	requestedSurfaceWidth: number;
-	mainContentMinWidth: number;
+	shellGutters: number;
 	anotherMajorSurfaceIsPersistent: boolean;
+};
+
+type ResponsiveSurfaceDecision = {
+	viewport: ResponsiveViewport;
+	mainContentMinWidth: number;
+	canPersistPrimarySecondary: boolean;
+	mode: SurfaceMode;
+	shouldPromoteIfOpen: boolean;
+	shouldRemainOpenAcrossModeChange: boolean;
+	shouldCloseOnRouteChange: boolean;
 };
 ```
 
@@ -181,15 +221,19 @@ The pure function decides:
 - whether one major surface may persist
 - the mode for the requested surface
 - whether the surface must be downgraded to sheet mode
+- whether an open surface should promote, remain open, or close during state transitions
 
-The hook reads window size and exposes that policy to client components.
+The hook reads window size and exposes the policy inputs to client components.
 
 Ownership:
 
 - the shared hook owns viewport classification
 - route wrappers provide `routeKind`
-- each surface owner provides its preferred width and the minimum readable width required by the main content
+- each surface owner provides its preferred width
 - the policy function returns the final mode
+- the global surface-state owner manages `ghostChat`, `notificationsPanel`, and `settingsDialog`
+- the route-local surface-state owner manages `repoSidebar`, `fileExplorer`, `documentOutline`, `detailPeek`, and `metadataSidebar`
+- the state owner, not the policy function, preserves open state while the mode changes
 
 ### Persistent-surface eligibility
 
@@ -224,6 +268,7 @@ Route minimums:
 
 - `repoCode`, `repoDocument`, `prDetail`: `640px`
 - `repoOverview`, `issueDetail`, `dashboard`, `listWithPeek`: `560px`
+- `modalOnly`: `560px`
 
 Evaluation rule:
 
@@ -249,6 +294,7 @@ Rules:
 - If a sheet-based surface becomes eligible for persistence after resize, it may promote into the persistent slot without losing its visible state.
 - If navigation leaves the route family that owns a local surface, that local surface closes.
 - Global Ghost chat may remain open across route transitions, but it must still obey the viewport-specific mode after navigation.
+- Notifications and settings keep their open state only within the interaction that opened them; route navigation closes them.
 - Entering a route that activates a higher-priority persistent candidate must evict a lower-priority candidate back to sheet mode.
 - Only one major persistent surface may exist at a time in `wideTablet`.
 
@@ -302,8 +348,8 @@ Relevant files:
 
 Rules:
 
-- `phone`: repo sidebar is a drawer or bottom-aligned sheet triggered from the page header or toolbar.
-- `tablet`: repo sidebar remains toggleable, not persistent.
+- `phone`: repo sidebar is a `rightSheet` triggered from the page header or toolbar.
+- `tablet`: repo sidebar remains a `rightSheet`, not persistent.
 - `wideTablet`: repo sidebar may become the one persistent major secondary surface on repo overview-style pages when no higher-priority persistent repo surface is active.
 - `desktop`: current persistent sidebar behavior remains acceptable, with width cleanup where necessary.
 
@@ -333,9 +379,9 @@ Relevant file:
 
 Rules:
 
-- `phone`: open as a bottom sheet
-- `tablet`: open as a right drawer
-- `wideTablet`: open as a right drawer
+- `phone`: `bottomSheet`
+- `tablet`: `rightSheet`
+- `wideTablet`: `rightSheet`
 - `desktop`: may remain as currently designed where already useful
 
 The outline is never the one persistent major secondary surface in hybrid tablet mode.
@@ -348,10 +394,10 @@ Relevant file:
 
 Rules:
 
-- `phone`: bottom sheet
-- `tablet`: right drawer
-- `wideTablet`: right drawer
-- `desktop`: toggleable slide-over panel
+- `phone`: `bottomSheet`
+- `tablet`: `rightSheet`
+- `wideTablet`: `rightSheet`
+- `desktop`: `rightSheet`
 
 Ghost chat should remain accessible everywhere but should not claim persistent screen real estate below desktop.
 
@@ -366,14 +412,16 @@ Relevant files:
 Rules:
 
 - Notifications:
-  - `phone`: bottom sheet opened from the navbar bell
-  - `tablet`, `wideTablet`, `desktop`: right sheet opened from the same bell trigger
+  - `phone`: `bottomSheet`
+  - `tablet`, `wideTablet`, `desktop`: `rightSheet`
   - no persistent variant at any width
+  - surface id: `notificationsPanel`
   - header actions remain visible while only the list body scrolls
 - Settings:
-  - `phone`: full-height dialog treatment with near-full viewport width and height
-  - `tablet`: large centered dialog using most of the viewport, not a small desktop card
-  - `wideTablet`, `desktop`: centered dialog with capped width and height
+  - `phone`: `modalDialog` with near-full viewport width and height
+  - `tablet`: `modalDialog` using most of the viewport, not a small desktop card
+  - `wideTablet`, `desktop`: `modalDialog` with capped width and height
+  - surface id: `settingsDialog`
   - the visible trigger remains the navbar account/settings entry points
 - Notifications and settings must preserve their existing trigger locations and stay fully operable with keyboard and touch input.
 - Long tabbed settings content must keep only the content pane scrollable, with the title and tab strip remaining visible.
@@ -394,7 +442,7 @@ Relevant file:
 Rules:
 
 - The timeline remains the primary surface on all narrow widths.
-- The issue metadata sidebar should move out of the inline mobile flow and become a toggleable sheet or drawer.
+- The issue metadata sidebar should move out of the inline mobile flow and become a `bottomSheet` on `phone` and a `rightSheet` on `tablet` and `wideTablet`.
 - `wideTablet` does not need to restore a persistent issue sidebar in this pass.
 - Desktop may retain the current persistent sidebar.
 
@@ -422,8 +470,9 @@ Relevant files:
 
 Rules:
 
-- Phone widths should prefer bottom sheet or full-width sheet behavior.
-- Tablet widths may use side sheets, but minimum widths must not exceed safe viewport space.
+- `phone`: `bottomSheet`
+- `tablet`, `wideTablet`, `desktop`: `rightSheet`
+- Sheet widths must remain within safe viewport space and must not rely on desktop-oriented minimum widths.
 - Hardcoded desktop-oriented minimum widths should be reduced or made conditional.
 
 ### Ordinary tables and metadata panels
@@ -522,6 +571,9 @@ Expected outcomes:
 - Secondary surfaces remain accessible on all widths.
 - No page depends on hover-only desktop affordances to expose essential navigation.
 - General tables and metadata surfaces become easier to scan on phone widths.
+- Resize and rotation preserve open-surface intent while correctly changing mode.
+- Focus returns to the triggering control when a sheet or dialog closes.
+- In `wideTablet`, promoting one major secondary surface evicts any lower-priority persistent candidate.
 
 ## Test Strategy
 

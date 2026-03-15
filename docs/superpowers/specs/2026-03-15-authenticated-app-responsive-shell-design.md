@@ -146,6 +146,7 @@ This pass covers every authenticated route family under `/(app)` either through 
 | global discovery and list pages | `/search`, `/trending`, `/repos`, `/issues`, `/pulls`, `/stars`, `/orgs`, `/users`, `/notifications` | `listWithPeek` | Shared shell, stacked data surfaces, list/peek responsiveness where present |
 | owner and profile detail pages | `/[owner]`, `/users/[username]`, `/stars/[username]`, `/orgs/[org]` | `listWithPeek` | Shared shell, card/grid responsiveness, stacked metadata surfaces |
 | repo overview-style pages | `/repos/[owner]/[repo]`, `/activity`, `/insights`, `/security`, `/releases`, `/tags`, `/discussions`, `/people`, `/prompts`, `/settings` | `repoOverview` | Repo sidebar behavior, card/grid responsiveness, metadata-panel cleanup |
+| repo-local issue and PR lists | `/repos/[owner]/[repo]/issues`, `/repos/[owner]/[repo]/pulls` | `listWithPeek` | Shared shell, stacked list metadata, peek/sheet responsiveness where present |
 | repo code browsing pages | `/code`, `/tree/...` | `repoCode` | File explorer policy and technical-content overflow preservation |
 | repo document and commit-detail pages | `/blob/...`, `/commits`, `/commits/[sha]` | `repoDocument` | File explorer or outline behavior plus technical-content overflow preservation |
 | repo issue detail | `/repos/[owner]/[repo]/issues/[number]` | `issueDetail` | Metadata-sidebar responsiveness and main-thread priority |
@@ -167,6 +168,7 @@ Implementation planning must center on:
 - one shared viewport hook
 - one global surface-state owner in the authenticated app shell
 - one route-local surface-state owner per route wrapper that manages local surfaces
+- one repo-surface coordinator mounted in the repo route layout for nested repo wrappers
 
 Normative shape:
 
@@ -239,6 +241,22 @@ Ownership:
 - the global surface-state owner manages `ghostChat`, `notificationsPanel`, and `settingsDialog`
 - the route-local surface-state owner manages `repoSidebar`, `fileExplorer`, `documentOutline`, `detailPeek`, and `metadataSidebar`
 - the state owner, not the policy function, preserves open state while the mode changes
+- the repo route layout hosts the repo-surface coordinator that arbitrates `repoSidebar`, `fileExplorer`, and `documentOutline` across nested repo wrappers such as `RepoLayoutWrapper` and `CodeContentWrapper`
+
+### Canonical policy inputs
+
+To keep the pure function deterministic across routes, planning should use these canonical inputs unless a route documents a narrower override:
+
+- `repoSidebar.requestedSurfaceWidth = 280`
+- `fileExplorer.requestedSurfaceWidth = 240`
+- `documentOutline.requestedSurfaceWidth = 280`
+- `metadataSidebar.requestedSurfaceWidth = 280`
+- `ghostChat.requestedSurfaceWidth = 380`
+- `notificationsPanel.requestedSurfaceWidth = 400`
+- `detailPeek.requestedSurfaceWidth = 700`
+- `shellGutters = 32` for phone, tablet, and wideTablet calculations
+
+Only `repoSidebar` and `fileExplorer` participate in persistent-slot calculations below desktop. The remaining values exist so sheet sizing and downgrade logic use stable test inputs.
 
 ### Global and local arbitration rules
 
@@ -309,7 +327,7 @@ Surface mode changes must be stable during live resize, tablet rotation, and rou
 Rules:
 
 - If a persistent surface becomes ineligible after resize or rotation, it should remain open but convert into its sheet variant.
-- If a sheet-based surface becomes eligible for persistence after resize, it may promote into the persistent slot without losing its visible state.
+- If a sheet-based `fileExplorer` or `repoSidebar` becomes eligible for persistence after resize, it must promote into the persistent slot without losing its visible state.
 - If navigation leaves the route family that owns a local surface, that local surface closes.
 - Global Ghost chat may remain open across route transitions, but it must still obey the viewport-specific mode after navigation.
 - Notifications and settings keep their open state only within the interaction that opened them; route navigation closes them.
@@ -400,7 +418,7 @@ Rules:
 - `phone`: `bottomSheet`
 - `tablet`: `rightSheet`
 - `wideTablet`: `rightSheet`
-- `desktop`: may remain as currently designed where already useful
+- `desktop`: persistent inline support surface on repo document pages
 
 The outline is never the one persistent major secondary surface in hybrid tablet mode.
 

@@ -18,6 +18,8 @@ The design introduces a centralized responsive surface-policy model that decides
 
 This replaces the current mix of one-off `lg` layout switches and `useIsMobile(<768)` checks.
 
+In this document, `drawer` means the same Radix-based `Sheet` primitive rendered from the left or right side.
+
 ## Goals
 
 - Make the authenticated shell under `/(app)` responsive from `320px` through large desktop widths.
@@ -142,12 +144,15 @@ This pass covers every authenticated route family under `/(app)` either through 
 |---|---|---|---|
 | dashboard | `/dashboard` | `dashboard` | Full shell and card/layout responsiveness |
 | global discovery and list pages | `/search`, `/trending`, `/repos`, `/issues`, `/pulls`, `/stars`, `/orgs`, `/users`, `/notifications` | `listWithPeek` | Shared shell, stacked data surfaces, list/peek responsiveness where present |
+| owner and profile detail pages | `/[owner]`, `/users/[username]`, `/stars/[username]`, `/orgs/[org]` | `listWithPeek` | Shared shell, card/grid responsiveness, stacked metadata surfaces |
 | repo overview-style pages | `/repos/[owner]/[repo]`, `/activity`, `/insights`, `/security`, `/releases`, `/tags`, `/discussions`, `/people`, `/prompts`, `/settings` | `repoOverview` | Repo sidebar behavior, card/grid responsiveness, metadata-panel cleanup |
 | repo code browsing pages | `/code`, `/tree/...` | `repoCode` | File explorer policy and technical-content overflow preservation |
 | repo document and commit-detail pages | `/blob/...`, `/commits`, `/commits/[sha]` | `repoDocument` | File explorer or outline behavior plus technical-content overflow preservation |
 | repo issue detail | `/repos/[owner]/[repo]/issues/[number]` | `issueDetail` | Metadata-sidebar responsiveness and main-thread priority |
 | repo PR detail and subroutes | `/repos/[owner]/[repo]/pulls/[number]`, `/pulls/[number]/...` | `prDetail` | Single-primary-surface tablet behavior, desktop split preserved |
+| repo record detail pages | `/repos/[owner]/[repo]/discussions/[number]`, `/prompts/[id]`, `/people/[username]`, `/releases/[tag]`, `/security/advisories/[ghsaId]` | `issueDetail` | Main content stays primary, supporting metadata surfaces remain toggleable |
 | repo action and comparison pages | `/repos/[owner]/[repo]/actions`, `/actions/[runId]`, `/actions/compare`, `/actions/workflows/...` | `listWithPeek` | Shared shell, stacked metadata panels, technical tables keep overflow |
+| repo authoring flows | `/repos/[owner]/[repo]/pulls/new`, `/pulls/new/[...sub]` | `modalOnly` | Shared shell, form responsiveness, dialog sizing, no new persistent side-surface work |
 | authenticated single-page utilities | `/extension`, `/theme-store`, `/theme-store/[slug]`, `/theme-store/publish` | `modalOnly` | Shared shell and dialog sizing only; no new persistent side-surface work in this pass |
 
 Route families not listed above are out of scope for feature-specific responsive work in this pass and only receive shared shell improvements if they inherit them automatically.
@@ -234,6 +239,19 @@ Ownership:
 - the global surface-state owner manages `ghostChat`, `notificationsPanel`, and `settingsDialog`
 - the route-local surface-state owner manages `repoSidebar`, `fileExplorer`, `documentOutline`, `detailPeek`, and `metadataSidebar`
 - the state owner, not the policy function, preserves open state while the mode changes
+
+### Global and local arbitration rules
+
+The global and route-local surface owners must follow one shared arbitration contract.
+
+Rules:
+
+- `settingsDialog` is modal and exclusive. Opening it closes `ghostChat`, `notificationsPanel`, and any non-persistent route-local sheet.
+- `ghostChat`, `notificationsPanel`, and any non-persistent route-local sheet are mutually exclusive. Opening one closes the others.
+- One persistent route-local surface may coexist with one global non-modal surface.
+- If a persistent local surface is downgraded to sheet mode while a global non-modal surface is already open, the downgraded local surface closes instead of opening a second sheet.
+- If a route-local sheet is open and a higher-priority local surface claims the persistent slot, the lower-priority local surface closes unless it already owns the persistent slot.
+- Route transitions always clear route-local open state. Global surface state may survive only when explicitly allowed by the runtime rules above.
 
 ### Persistent-surface eligibility
 
@@ -454,10 +472,14 @@ Relevant file:
 
 Rules:
 
-- Phone and tablet widths remain single-primary-surface experiences.
-- Existing mobile tabbing behavior can remain, but breakpoint cleanup should ensure the tablet experience does not inherit cramped desktop assumptions.
-- `wideTablet` should still avoid multiple simultaneous persistent side panels in this pass.
+- `phone` and `tablet` remain single-primary-surface experiences.
+- The top-level non-desktop surface switch remains `diff` versus `chat`.
+- Inside `chat`, the existing `conversation` versus `overview` choice remains available as an in-panel segmented control rather than as a second simultaneous side panel.
+- `wideTablet` still avoids multiple persistent side panels in this pass and continues to use one visible primary surface at a time.
 - Desktop split view remains the place for the existing resizable multi-pane experience.
+- Desktop keeps the current left diff panel and right conversation/overview side panel model.
+- Conflict mode remains a full-width takeover at all widths and bypasses the normal persistent-side-surface rules.
+- If a file-targeting navigation event occurs while a non-desktop PR detail page is showing `chat`, the layout should switch back to the `diff` surface so the requested file is visible.
 
 This pass should improve breakpoint behavior and access to supporting surfaces, not redesign the PR review model into a new workspace system.
 
@@ -546,9 +568,13 @@ Manual verification widths:
 
 - `320`
 - `375`
+- `639`
 - `640`
 - `768`
+- `895`
+- `896`
 - `900`
+- `1023`
 - `1024`
 - `1440`
 

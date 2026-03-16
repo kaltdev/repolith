@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
-import { X, Code2, Ghost, Plus } from "lucide-react";
+import { X, Code2, Ghost, Plus, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIChat } from "@/components/shared/ai-chat";
 import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
@@ -537,6 +537,22 @@ export function GlobalChatPanel() {
 				)}
 				style={panelWidthStyle}
 			>
+				{/* Side close tab */}
+				<button
+					type="button"
+					onClick={closeChat}
+					className={cn(
+						"absolute -left-6 top-1/2 -translate-y-1/2 z-10",
+						"flex items-center justify-center pl-1 pr-0.5",
+						"w-6 h-10 rounded-l-full",
+						"bg-background border border-r-0 border-border/15",
+						"text-muted-foreground hover:text-foreground",
+						"cursor-pointer transition-all duration-200",
+						!state.isOpen && "hidden",
+					)}
+				>
+					<ChevronRight className="w-3 h-3" />
+				</button>
 				<div className="flex min-h-0 flex-1 flex-row">
 					{canResizePanel && (
 						<div
@@ -549,12 +565,6 @@ export function GlobalChatPanel() {
 					<div className="flex-1 min-w-0 flex flex-col">
 						{/* Panel header */}
 						<div className="group/header shrink-0 flex items-center gap-1.5 pl-3 pr-2 py-1.5 border-b border-border/60">
-							{!isBottomSheet && (
-								<span
-									aria-hidden
-									className="w-3 shrink-0"
-								/>
-							)}
 							<Ghost className="w-3.5 h-3.5 text-foreground/50" />
 							<span className="text-xs font-medium text-foreground/70 truncate">
 								Ghost

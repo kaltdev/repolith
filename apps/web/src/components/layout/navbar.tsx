@@ -103,7 +103,7 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 		>
 			<nav
 				className={cn(
-					"top-0 flex h-full items-center justify-between border-border px-2 sm:px-4",
+					"top-0 flex h-full items-center justify-between border-b border-border px-2 sm:px-4",
 					!isRepoPage && "border-b",
 				)}
 			>

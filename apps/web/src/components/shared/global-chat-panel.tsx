@@ -521,7 +521,7 @@ export function GlobalChatPanel() {
 		>
 			<SheetContent
 				side={isBottomSheet ? "bottom" : "right"}
-				overlayClassName="backdrop-blur-none"
+				overlayBlur={false}
 				title="Ghost"
 				showCloseButton={false}
 				className={cn(

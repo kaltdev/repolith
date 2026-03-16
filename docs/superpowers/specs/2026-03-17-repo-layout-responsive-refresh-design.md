@@ -1,0 +1,90 @@
+# Repo Layout Responsive Refresh Design
+
+Date: 2026-03-17
+Status: Approved for planning
+
+## Summary
+
+Refreshing a repo page on desktop can briefly render the compact mobile or tablet repo header before the responsive viewport width is known on the client.
+
+That flash exposes controls intended only for smaller layouts, including the compact `Star`, `Fork`, and `View more` actions inside the repo layout wrapper.
+
+The fix will keep the existing responsive surface policy unchanged and suppress the compact header until the responsive surface provider reports a ready client width.
+
+## Goals
+
+- Prevent the compact repo header from appearing on desktop during initial render or hard refresh.
+- Preserve the current persistent repo sidebar behavior on desktop.
+- Preserve the current wide-tablet overview behavior where the repo sidebar remains persistent when there is enough room.
+- Preserve the compact summary actions on tablet and mobile once the responsive viewport is known.
+
+## Non-Goals
+
+- Changing the responsive surface policy thresholds
+- Changing repo sidebar persistence rules
+- Redesigning the compact summary UI
+- Refactoring unrelated responsive wrappers
+
+## Current State
+
+Relevant files:
+
+- [`apps/web/src/components/repo/repo-layout-wrapper.tsx`](../../../apps/web/src/components/repo/repo-layout-wrapper.tsx)
+- [`apps/web/src/components/shared/responsive-surface-provider.tsx`](../../../apps/web/src/components/shared/responsive-surface-provider.tsx)
+- [`apps/web/src/lib/responsive-surface-policy.ts`](../../../apps/web/src/lib/responsive-surface-policy.ts)
+
+`RepoLayoutWrapper` currently reads `width` from `useResponsiveSurfaceContext()` and immediately derives a surface mode from that width.
+
+During the first client render, the provider initializes width as `0` before `window.innerWidth` is measured. That causes the wrapper to transiently choose a non-persistent mode, which renders the compact repo header and its mobile or tablet-only actions.
+
+Once the effect runs and width updates, the wrapper switches back to the correct persistent desktop mode. The issue is the initial incorrect render, not the steady-state layout.
+
+## Decision
+
+`RepoLayoutWrapper` will treat responsive mode as unresolved until `useResponsiveSurfaceContext().isReady` is `true`.
+
+While unresolved:
+
+- the compact repo header will not render
+- the compact summary actions will not render
+- the existing responsive surface policy will remain the source of truth once width is available
+
+After readiness:
+
+- desktop keeps the persistent repo sidebar behavior it has today
+- wide-tablet repo overview keeps the current persistent-sidebar behavior when space allows
+- tablet and phone keep the compact header and sheet-based sidebar behavior
+
+## Implementation
+
+The change is intentionally narrow and limited to [`apps/web/src/components/repo/repo-layout-wrapper.tsx`](../../../apps/web/src/components/repo/repo-layout-wrapper.tsx).
+
+Implementation steps:
+
+1. Read `isReady` alongside `width` from `useResponsiveSurfaceContext()`.
+2. Gate the compact repo header so it only renders when responsive state is ready and the sidebar mode is non-persistent.
+3. Leave `getResponsiveSurfaceDecision()` and its thresholds unchanged.
+
+This avoids introducing server-side viewport guessing or breakpoint-specific CSS patches that would mask, rather than fix, the underlying initial render mismatch.
+
+## Risks And Mitigations
+
+- Risk: tablet or phone users could briefly lose the compact summary actions during hydration.
+  Mitigation: the compact header appears as soon as the provider measures `window.innerWidth`; this is preferable to showing the wrong desktop-incompatible UI on refresh.
+
+- Risk: changing the policy logic could alter wide-tablet behavior.
+  Mitigation: the policy module is not part of this change.
+
+## Verification
+
+Manual verification:
+
+1. Open a repo overview page on desktop and hard refresh.
+2. Confirm the compact `Star`, `Fork`, and `View more` controls do not appear during refresh.
+3. Open the same route on tablet or phone width and confirm the compact header still appears after hydration.
+4. Confirm wide-tablet overview still promotes the persistent repo sidebar when space allows.
+
+Automated verification:
+
+- Add a focused wrapper test only if there is already a stable test pattern for this component.
+- At minimum, ensure existing responsive surface policy tests remain unchanged because the policy itself is not being modified.

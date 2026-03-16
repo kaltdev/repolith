@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { AIChat } from "@/components/shared/ai-chat";
 import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surface-provider";
 import { useGlobalChat, type InlineContext } from "@/components/shared/global-chat-provider";
+import { useNavVisibility } from "@/components/shared/nav-visibility-provider";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import {
@@ -181,6 +182,7 @@ export function GlobalChatPanel() {
 	const pathname = usePathname();
 	const searchParams = useSearchParams();
 	const { width } = useResponsiveSurfaceContext();
+	const { isNavHidden } = useNavVisibility();
 
 	// Defer rendering until after hydration — this panel starts hidden (translate-x-full)
 	// and depends on client-only state (chat history, persisted context), so SSR is pointless
@@ -434,6 +436,9 @@ export function GlobalChatPanel() {
 				}
 			: undefined;
 	const canResizePanel = !isBottomSheet && width >= 1024;
+	const desktopPanelClassName = isNavHidden
+		? "top-0 bottom-auto h-dvh"
+		: "top-10 bottom-auto h-[calc(100dvh-var(--spacing)*10)]";
 
 	// ── Tab state (from context, persisted server-side) ────────────────────
 
@@ -522,7 +527,10 @@ export function GlobalChatPanel() {
 					"gap-0 p-0",
 					isBottomSheet
 						? "max-h-[80dvh] rounded-t-2xl border-t border-l-0 border-border"
-						: "top-10 h-[calc(100dvh-2.5rem)] max-w-none border-l border-border shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.25)]",
+						: cn(
+								desktopPanelClassName,
+								"max-w-none border-l border-border shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.25)]",
+							),
 				)}
 				style={panelWidthStyle}
 			>

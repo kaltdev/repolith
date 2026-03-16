@@ -10,6 +10,7 @@ import { useResponsiveSurfaceContext } from "@/components/shared/responsive-surf
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { getResponsiveSurfaceDecision } from "@/lib/responsive-surface-policy";
 import { cn } from "@/lib/utils";
+import { shouldRenderCompactRepoHeader } from "./repo-layout-wrapper-visibility";
 import { setRepoSidebarState } from "./repo-sidebar-actions";
 
 interface RepoLayoutWrapperProps {
@@ -50,7 +51,7 @@ export function RepoLayoutWrapper({
 		pathname.includes("/tree/") ||
 		pathname.includes("/blob/");
 	const effectiveInitialCollapsed = isPrPage ? true : initialCollapsed;
-	const { width } = useResponsiveSurfaceContext();
+	const { isReady, width } = useResponsiveSurfaceContext();
 
 	const [sidebarWidth, setSidebarWidth] = useState(
 		effectiveInitialCollapsed ? 0 : initialWidth,
@@ -204,28 +205,36 @@ export function RepoLayoutWrapper({
 	const contentInsetStyle = {
 		"--repo-pr": isPersistentSidebar && collapsed ? "calc(var(--spacing) * 4)" : "1rem",
 	} as React.CSSProperties;
-	const compactRepoHeader =
-		!isPersistentSidebar && (summary || summaryActions) ? (
-			<div className="px-4 pt-3 pb-2">
-				{summary ? <div className="min-w-0">{summary}</div> : null}
-				<div
-					className={cn(
-						"flex flex-wrap items-center gap-2",
-						summary ? "mt-2" : "",
-					)}
+	const compactRepoHeaderVisible = shouldRenderCompactRepoHeader({
+		hasSummary: summary !== null && summary !== undefined && summary !== false,
+		hasSummaryActions:
+			summaryActions !== null &&
+			summaryActions !== undefined &&
+			summaryActions !== false,
+		isPersistentSidebar,
+		isReady,
+	});
+	const compactRepoHeader = compactRepoHeaderVisible ? (
+		<div className="px-4 pt-3 pb-2">
+			{summary ? <div className="min-w-0">{summary}</div> : null}
+			<div
+				className={cn(
+					"flex flex-wrap items-center gap-2",
+					summary ? "mt-2" : "",
+				)}
+			>
+				{summaryActions}
+				<button
+					type="button"
+					onClick={() => setSheetOpen(true)}
+					className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2.5 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:bg-muted/55 hover:text-foreground cursor-pointer"
 				>
-					{summaryActions}
-					<button
-						type="button"
-						onClick={() => setSheetOpen(true)}
-						className="inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2.5 text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground transition-colors hover:bg-muted/55 hover:text-foreground cursor-pointer"
-					>
-						<PanelLeft className="w-3 h-3" />
-						View more
-					</button>
-				</div>
+					<PanelLeft className="w-3 h-3" />
+					View more
+				</button>
 			</div>
-		) : null;
+		</div>
+	) : null;
 
 	return (
 		<div

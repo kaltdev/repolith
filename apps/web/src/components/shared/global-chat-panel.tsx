@@ -512,6 +512,7 @@ export function GlobalChatPanel() {
 
 	return (
 		<Sheet
+			modal={false}
 			open={state.isOpen}
 			onOpenChange={(open) => {
 				if (!open) {
@@ -521,6 +522,7 @@ export function GlobalChatPanel() {
 		>
 			<SheetContent
 				side={isBottomSheet ? "bottom" : "right"}
+				showOverlay={false}
 				overlayBlur={false}
 				title="Ghost"
 				showCloseButton={false}

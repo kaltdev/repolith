@@ -53,7 +53,7 @@ Relevant files:
 
 `RepoLayoutWrapper` currently reads `width` from `useResponsiveSurfaceContext()` and immediately derives a surface mode from that width.
 
-During the first client render, the provider initializes width as `0` before `window.innerWidth` is measured. That causes the wrapper to transiently choose a non-persistent mode, which renders the compact repo header and its mobile or tablet-only actions.
+During SSR and the earliest hydration pass, the provider starts with `width = 0` before `window.innerWidth` is measured on the client. That causes the wrapper to transiently choose a non-persistent mode, which renders the compact repo header and its mobile or tablet-only actions.
 
 Once the effect runs and width updates, the wrapper switches back to the correct persistent desktop mode. The issue is the initial incorrect render, not the steady-state layout.
 
@@ -65,7 +65,8 @@ While unresolved:
 
 - the compact repo header will not render
 - the compact summary actions will not render
-- the existing responsive surface policy will remain the source of truth once width is available
+- all other layout branches continue to behave exactly as they do today
+- the existing responsive surface policy remains the source of truth once width is available
 
 After readiness:
 
@@ -82,7 +83,8 @@ Implementation steps:
 
 1. Read `isReady` alongside `width` from `useResponsiveSurfaceContext()`.
 2. Gate the compact repo header so it only renders when responsive state is ready and the sidebar mode is non-persistent.
-3. Leave `getResponsiveSurfaceDecision()` and its thresholds unchanged.
+3. Do not defer or rewrite other mode-driven branches such as the persistent-versus-sheet shell, wrapper flex direction, or breadcrumb portal behavior.
+4. Leave `getResponsiveSurfaceDecision()` and its thresholds unchanged.
 
 This avoids introducing server-side viewport guessing or breakpoint-specific CSS patches that would mask, rather than fix, the underlying initial render mismatch.
 
@@ -93,6 +95,9 @@ This avoids introducing server-side viewport guessing or breakpoint-specific CSS
 
 - Risk: changing the policy logic could alter wide-tablet behavior.
   Mitigation: the policy module is not part of this change.
+
+- Risk: implementers could over-apply `isReady` and delay unrelated layout branches.
+  Mitigation: the readiness gate is limited to compact header rendering only; other branches remain unchanged and any transient absence of the eventual desktop sidebar remains acceptable in this change.
 
 ## Verification
 
@@ -109,6 +114,7 @@ Manual verification:
 
 Automated verification:
 
-- No new automated test is required for this change.
-- The repo currently has policy-level tests but no existing React wrapper test pattern for this component.
-- Because the surface policy logic is unchanged, implementation may rely on focused manual verification for this narrow hydration-rendering regression.
+- Add one focused Vitest regression test for the compact-header visibility decision.
+- The implementation may extract a tiny pure helper that answers whether the compact repo header should render from `isReady`, `isPersistentSidebar`, and header-content presence so the test stays unit-level and does not require a new React component test harness.
+- Cover at least these cases in that test: unresolved state hides the compact header, persistent desktop hides it, and ready non-persistent state shows it.
+- Existing responsive-surface-policy tests should remain unchanged because the policy module itself is not being modified.

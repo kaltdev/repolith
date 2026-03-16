@@ -25,6 +25,24 @@ The fix will keep the existing responsive surface policy unchanged and suppress 
 - Redesigning the compact summary UI
 - Refactoring unrelated responsive wrappers
 
+## Scope
+
+This change applies to every route that renders [`RepoLayoutWrapper`](../../../apps/web/src/components/repo/repo-layout-wrapper.tsx), not only the repo overview page.
+
+In scope:
+
+- repo overview routes that can show the compact summary header
+- code-like repo routes that still use the wrapper while forcing the sidebar into sheet mode
+- PR routes and other collapsed-sidebar cases that flow through the same wrapper logic
+
+Out of scope:
+
+- changing whether PR pages start collapsed
+- changing how code routes choose sheet versus persistent behavior
+- eliminating all initial layout shift before `isReady`
+
+The accepted tradeoff is that desktop may briefly omit the compact header while responsive state is unresolved. That is acceptable because the bug to prevent is showing the wrong mobile or tablet controls on desktop.
+
 ## Current State
 
 Relevant files:
@@ -54,6 +72,7 @@ After readiness:
 - desktop keeps the persistent repo sidebar behavior it has today
 - wide-tablet repo overview keeps the current persistent-sidebar behavior when space allows
 - tablet and phone keep the compact header and sheet-based sidebar behavior
+- collapsed desktop states, including PR routes that start collapsed, must also avoid rendering the compact `Star`, `Fork`, and `View more` controls during refresh
 
 ## Implementation
 
@@ -79,12 +98,17 @@ This avoids introducing server-side viewport guessing or breakpoint-specific CSS
 
 Manual verification:
 
-1. Open a repo overview page on desktop and hard refresh.
+1. Open a repo overview page on desktop with the sidebar expanded and hard refresh.
 2. Confirm the compact `Star`, `Fork`, and `View more` controls do not appear during refresh.
-3. Open the same route on tablet or phone width and confirm the compact header still appears after hydration.
-4. Confirm wide-tablet overview still promotes the persistent repo sidebar when space allows.
+3. Open a desktop code-like repo route that uses the wrapper and hard refresh.
+4. Confirm the compact controls do not appear there either.
+5. Open a desktop PR route, or any desktop state where the repo sidebar starts collapsed, and hard refresh.
+6. Confirm the compact controls still do not appear while the sidebar is collapsed.
+7. Open the same repo on tablet or phone width and confirm the compact header appears after hydration.
+8. Confirm wide-tablet overview still promotes the persistent repo sidebar when space allows.
 
 Automated verification:
 
-- Add a focused wrapper test only if there is already a stable test pattern for this component.
-- At minimum, ensure existing responsive surface policy tests remain unchanged because the policy itself is not being modified.
+- No new automated test is required for this change.
+- The repo currently has policy-level tests but no existing React wrapper test pattern for this component.
+- Because the surface policy logic is unchanged, implementation may rely on focused manual verification for this narrow hydration-rendering regression.

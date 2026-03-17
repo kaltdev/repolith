@@ -107,7 +107,10 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 					!isRepoPage && "border-b",
 				)}
 			>
-				<div className="flex items-center gap-0" id="navbar-breadcrumb">
+				<div
+					className="mr-2 flex min-w-0 items-center gap-2"
+					id="navbar-breadcrumb"
+				>
 					<Link
 						className="shrink-0 flex items-center text-foreground gap-1.5 transition-colors text-xs tracking-tight"
 						href="/dashboard"
@@ -132,6 +135,10 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 							Repolith.
 						</span>
 					</Link>
+					<div
+						id="repo-nav-breadcrumb"
+						className="flex min-w-0 items-center"
+					/>
 				</div>
 				<CommandMenu />
 				<div className="flex items-center gap-1.5">

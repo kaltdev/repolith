@@ -254,8 +254,6 @@ export function RepoNav({
 							</Link>
 						))}
 					</div>
-					<div id="repo-nav-breadcrumb" className="contents mr-2" />
-
 					<div
 						className={cn(
 							"absolute bottom-0 h-0.5 bg-foreground/50",

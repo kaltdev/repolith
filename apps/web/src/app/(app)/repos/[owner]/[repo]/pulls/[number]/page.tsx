@@ -35,14 +35,15 @@ import { PRCommentForm } from "@/components/pr/pr-comment-form";
 import { PRReviewForm } from "@/components/pr/pr-review-form";
 import { PRConflictResolver } from "@/components/pr/pr-conflict-resolver";
 import { PRAuthorDossier } from "@/components/pr/pr-author-dossier";
-import { PRChecksPanel } from "@/components/pr/pr-checks-panel";
 import { PROverviewPanel } from "@/components/pr/pr-overview-panel";
+import { ReviewChecklistSidebar } from "@/components/pr/review/review-checklist-sidebar";
 import { ChatPageActivator } from "@/components/shared/chat-page-activator";
 import { TrackView } from "@/components/shared/track-view";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { inngest } from "@/lib/inngest";
 import { isItemPinned } from "@/lib/pinned-items-store";
+import { getPRReviewWorkspacePageData } from "@/lib/pr-review-workspace";
 import { all } from "better-all";
 
 export async function generateMetadata({
@@ -178,6 +179,7 @@ export default async function PRDetailPage({
 		prPinned,
 		authorDossier,
 		branchBehindBase,
+		reviewWorkspaceData,
 	} = await all({
 		checkStatus: async () => {
 			if (!isOpen) return undefined;
@@ -220,6 +222,23 @@ export default async function PRDetailPage({
 							.head_repo_owner,
 					)
 				: Promise.resolve(false),
+		reviewWorkspaceData: () =>
+			getPRReviewWorkspacePageData({
+				userId: session?.user?.id ?? null,
+				owner,
+				repo,
+				pullNumber,
+				headSha: pr.head.sha,
+				baseSha: pr.base.sha,
+				files: prFiles.map((file) => ({
+					filename: file.filename,
+					status: file.status,
+					additions: file.additions,
+					deletions: file.deletions,
+					patch: file.patch,
+					previousFilename: file.previous_filename ?? null,
+				})),
+			}),
 	});
 
 	const checkStatus = checkStatusResult as CheckStatus | undefined;
@@ -441,7 +460,10 @@ export default async function PRDetailPage({
 			<PRDetailLayout
 				commentCount={comments.issueComments.length}
 				fileCount={prFiles.length}
-				hasReviews={reviews.some((r) => r.state !== "PENDING")}
+				hasReviews={
+					reviews.some((r) => r.state !== "PENDING") ||
+					reviewWorkspaceData.draftComments.length > 0
+				}
 				conflictPanel={
 					showConflictResolver ? (
 						<PRConflictResolver
@@ -467,6 +489,16 @@ export default async function PRDetailPage({
 						participants={participants}
 					/>
 				}
+				reviewPanel={
+					<ReviewChecklistSidebar
+						owner={owner}
+						repo={repo}
+						pullNumber={pullNumber}
+						items={reviewWorkspaceData.checklistItems}
+						canPersist={!!session?.user?.id}
+					/>
+				}
+				reviewCount={reviewWorkspaceData.checklistItems.length}
 				infoBar={
 					<>
 						<PRHeader
@@ -515,6 +547,24 @@ export default async function PRDetailPage({
 											repo={repo}
 											pullNumber={
 												pr.number
+											}
+											headSha={
+												pr
+													.head
+													.sha
+											}
+											baseSha={
+												pr
+													.base
+													.sha
+											}
+											reviewWorkspaceData={
+												reviewWorkspaceData
+											}
+											canPersistReviewWorkspace={
+												!!session
+													?.user
+													?.id
 											}
 											participants={
 												participants
@@ -647,6 +697,8 @@ export default async function PRDetailPage({
 						highlightData={highlightData}
 						participants={participants}
 						checkStatus={checkStatus}
+						reviewWorkspaceData={reviewWorkspaceData}
+						canPersistReviewWorkspace={!!session?.user?.id}
 					/>
 				}
 				conversationPanel={

@@ -1,19 +1,21 @@
 "use client";
 
-import { useState } from "react";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Settings2, FolderTree, List } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-	type DiffPreferences,
-	type DiffViewMode,
-	type DiffFontSize,
-	getDiffPreferences,
-	setDiffPreferences,
-} from "@/lib/diff-preferences";
+import { type DiffPreferences, type DiffViewMode, type DiffFontSize } from "@/lib/diff-preferences";
 
 interface DiffTreeSettingsPopoverProps {
-	onSettingsChange: (prefs: DiffPreferences) => void;
+	preferences: Pick<DiffPreferences, "defaultViewMode" | "fontSize" | "showFolderDiffCount">;
+	onSettingsChange: (
+		patch: Partial<
+			Pick<
+				DiffPreferences,
+				"defaultViewMode" | "fontSize" | "showFolderDiffCount"
+			>
+		>,
+	) => void;
+	disabled?: boolean;
 }
 
 function SegmentedToggle<T extends string>({
@@ -45,22 +47,31 @@ function SegmentedToggle<T extends string>({
 	);
 }
 
-export function DiffTreeSettingsPopover({ onSettingsChange }: DiffTreeSettingsPopoverProps) {
-	const [prefs, setPrefs] = useState<DiffPreferences>(getDiffPreferences);
-
-	function update(patch: Partial<DiffPreferences>) {
-		const updated = setDiffPreferences(patch);
-		setPrefs(updated);
-		onSettingsChange(updated);
+export function DiffTreeSettingsPopover({
+	preferences,
+	onSettingsChange,
+	disabled = false,
+}: DiffTreeSettingsPopoverProps) {
+	function update(
+		patch: Partial<
+			Pick<
+				DiffPreferences,
+				"defaultViewMode" | "fontSize" | "showFolderDiffCount"
+			>
+		>,
+	) {
+		onSettingsChange(patch);
 	}
 
 	return (
 		<PopoverPrimitive.Root>
 			<PopoverPrimitive.Trigger asChild>
 				<button
+					disabled={disabled}
 					className={cn(
 						"p-1 rounded transition-colors cursor-pointer",
 						"text-muted-foreground/60 hover:text-muted-foreground",
+						disabled && "opacity-40 cursor-not-allowed",
 					)}
 					title="Tree settings"
 				>
@@ -84,7 +95,7 @@ export function DiffTreeSettingsPopover({ onSettingsChange }: DiffTreeSettingsPo
 								Default view
 							</label>
 							<SegmentedToggle<DiffViewMode>
-								value={prefs.defaultViewMode}
+								value={preferences.defaultViewMode}
 								options={[
 									{
 										value: "tree",
@@ -118,7 +129,7 @@ export function DiffTreeSettingsPopover({ onSettingsChange }: DiffTreeSettingsPo
 								Font size
 							</label>
 							<SegmentedToggle<DiffFontSize>
-								value={prefs.fontSize}
+								value={preferences.fontSize}
 								options={[
 									{
 										value: "sm",
@@ -146,17 +157,17 @@ export function DiffTreeSettingsPopover({ onSettingsChange }: DiffTreeSettingsPo
 							<button
 								role="switch"
 								aria-checked={
-									prefs.showFolderDiffCount
+									preferences.showFolderDiffCount
 								}
 								onClick={() =>
 									update({
 										showFolderDiffCount:
-											!prefs.showFolderDiffCount,
+											!preferences.showFolderDiffCount,
 									})
 								}
 								className={cn(
 									"relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-colors cursor-pointer",
-									prefs.showFolderDiffCount
+									preferences.showFolderDiffCount
 										? "bg-primary"
 										: "bg-muted-foreground/30",
 								)}
@@ -164,7 +175,7 @@ export function DiffTreeSettingsPopover({ onSettingsChange }: DiffTreeSettingsPo
 								<span
 									className={cn(
 										"inline-block h-3 w-3 rounded-full bg-background shadow-sm transition-transform",
-										prefs.showFolderDiffCount
+										preferences.showFolderDiffCount
 											? "translate-x-3.5"
 											: "translate-x-0.5",
 									)}

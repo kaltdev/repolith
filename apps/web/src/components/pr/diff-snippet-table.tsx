@@ -6,12 +6,9 @@ import { cn } from "@/lib/utils";
 import type { DiffLine } from "@/lib/github-utils";
 import type { SyntaxToken } from "@/lib/shiki";
 import { Badge } from "@/components/ui/badge";
-import {
-	InlineCommentForm,
-	SegmentedContent,
-	SyntaxSegmentedContent,
-	type AddContextCallback,
-} from "./pr-diff-viewer";
+import { SegmentedContent, SyntaxSegmentedContent } from "./review/diff-content";
+import type { AddContextCallback } from "./review/review-models";
+import { InlineCommentForm } from "./pr-diff-viewer";
 
 interface DiffSnippetTableProps {
 	lines: DiffLine[];
@@ -24,7 +21,6 @@ interface DiffSnippetTableProps {
 	repo?: string;
 	pullNumber?: number;
 	headSha?: string;
-	headBranch?: string;
 	onAddContext?: AddContextCallback;
 	participants?: Array<{ login: string; avatar_url: string }>;
 	hideNewBadge?: boolean;
@@ -41,7 +37,6 @@ export function DiffSnippetTable({
 	repo,
 	pullNumber,
 	headSha,
-	headBranch,
 	onAddContext,
 	participants,
 	hideNewBadge,
@@ -522,9 +517,6 @@ export function DiffSnippetTable({
 														}
 														headSha={
 															headSha!
-														}
-														headBranch={
-															headBranch
 														}
 														filename={
 															filename

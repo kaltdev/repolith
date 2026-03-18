@@ -407,6 +407,125 @@ model PrOverviewAnalysis {
   @@map("pr_overview_analysis")
 }
 
+model PullRequestReviewWorkspace {
+  id                  String  @id
+  userId              String
+  owner               String
+  repo                String
+  pullNumber          Int
+  headSha             String
+  baseSha             String
+  draftBody           String?
+  pendingVerdict      String?
+  hideViewedFiles     Boolean @default(false)
+  splitView           Boolean?
+  wordWrap            Boolean?
+  defaultViewMode     String?
+  fontSize            String?
+  showFolderDiffCount Boolean?
+  createdAt           String
+  updatedAt           String
+
+  draftComments PullRequestDraftComment[]
+  suggestions   PullRequestSuggestion[]
+
+  @@unique([userId, owner, repo, pullNumber])
+  @@index([owner, repo, pullNumber])
+  @@index([userId, updatedAt])
+  @@map("pull_request_review_workspaces")
+}
+
+model PullRequestDraftComment {
+  id               String  @id
+  workspaceId      String
+  path             String
+  side             String?
+  startLine        Int?
+  endLine          Int?
+  lineFingerprint  String?
+  headSha          String
+  body             String
+  threadId         String?
+  replyToCommentId Int?
+  status           String  @default("active")
+  createdAt        String
+  updatedAt        String
+
+  workspace   PullRequestReviewWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  suggestions PullRequestSuggestion[]
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, path])
+  @@map("pull_request_draft_comments")
+}
+
+model PullRequestSuggestion {
+  id                  String  @id
+  workspaceId         String
+  draftCommentId      String?
+  githubCommentId     Int?
+  path                String
+  side                String  @default("RIGHT")
+  startLine           Int
+  endLine             Int
+  originalCode        String
+  suggestedCode       String
+  originalFingerprint String
+  status              String  @default("draft")
+  applyDisabledReason String?
+  appliedCommitSha    String?
+  appliedAt           String?
+  createdAt           String
+  updatedAt           String
+
+  workspace    PullRequestReviewWorkspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  draftComment PullRequestDraftComment?   @relation(fields: [draftCommentId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, status])
+  @@index([workspaceId, path])
+  @@index([draftCommentId])
+  @@map("pull_request_suggestions")
+}
+
+model PullRequestReviewerFileState {
+  id             String  @id
+  userId         String
+  owner          String
+  repo           String
+  pullNumber     Int
+  path           String
+  fileFingerprint String
+  viewed         Boolean @default(false)
+  lastViewedAt   String?
+  createdAt      String
+  updatedAt      String
+
+  @@unique([userId, owner, repo, pullNumber, path])
+  @@index([owner, repo, pullNumber, viewed])
+  @@index([userId, updatedAt])
+  @@map("pull_request_reviewer_file_states")
+}
+
+model PullRequestChecklistState {
+  id              String  @id
+  userId          String
+  owner           String
+  repo            String
+  pullNumber      Int
+  itemKey         String
+  itemFingerprint String
+  checked         Boolean @default(false)
+  createdAt       String
+  updatedAt       String
+
+  @@unique([userId, owner, repo, pullNumber, itemKey])
+  @@index([owner, repo, pullNumber])
+  @@index([userId, updatedAt])
+  @@map("pull_request_checklist_states")
+}
+
 model CustomTheme {
   id              String  @id @default(cuid())
   slug            String  @unique

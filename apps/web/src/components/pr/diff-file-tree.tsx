@@ -21,6 +21,7 @@ interface DiffFileTreeProps {
 	threadsByFile: Map<string, ReviewThread[]>;
 	onToggleViewed: (filename: string) => void;
 	onSetFilesViewed: (filenames: string[], viewed: boolean) => void;
+	canToggleViewed?: boolean;
 	defaultViewMode?: DiffViewMode;
 	fontSize?: DiffFontSize;
 	showFolderDiffCount?: boolean;
@@ -230,6 +231,7 @@ interface TreeNodeProps {
 	onToggle: (path: string) => void;
 	onToggleViewed: (filename: string) => void;
 	onSetFilesViewed: (filenames: string[], viewed: boolean) => void;
+	canToggleViewed: boolean;
 	fontSize: DiffFontSize;
 	showFolderDiffCount: boolean;
 }
@@ -258,6 +260,7 @@ const DiffTreeNode = memo(function DiffTreeNode({
 	onToggle,
 	onToggleViewed,
 	onSetFilesViewed,
+	canToggleViewed,
 	fontSize,
 	showFolderDiffCount,
 }: TreeNodeProps) {
@@ -328,15 +331,22 @@ const DiffTreeNode = memo(function DiffTreeNode({
 						</span>
 					)}
 					<button
+						disabled={!canToggleViewed}
 						onClick={(e) => {
 							e.stopPropagation();
 							onSetFilesViewed(filePaths, !allViewed);
 						}}
-						className="hidden group-hover:flex items-center justify-end w-[34px] shrink-0"
+						className={cn(
+							"hidden group-hover:flex items-center justify-end w-[34px] shrink-0",
+							!canToggleViewed &&
+								"cursor-not-allowed opacity-40",
+						)}
 						title={
-							allViewed
-								? "Mark all as unviewed"
-								: "Mark all as viewed"
+							canToggleViewed
+								? allViewed
+									? "Mark all as unviewed"
+									: "Mark all as viewed"
+								: "Sign in to persist viewed state"
 						}
 					>
 						<span
@@ -378,6 +388,7 @@ const DiffTreeNode = memo(function DiffTreeNode({
 								onToggle={onToggle}
 								onToggleViewed={onToggleViewed}
 								onSetFilesViewed={onSetFilesViewed}
+								canToggleViewed={canToggleViewed}
 								fontSize={fontSize}
 								showFolderDiffCount={
 									showFolderDiffCount
@@ -457,12 +468,22 @@ const DiffTreeNode = memo(function DiffTreeNode({
 				-{node.deletions ?? 0}
 			</span>
 			<button
+				disabled={!canToggleViewed}
 				onClick={(e) => {
 					e.stopPropagation();
 					onToggleViewed(node.path);
 				}}
-				className="hidden group-hover/file:flex items-center justify-end w-[34px] shrink-0"
-				title={isViewed ? "Mark as unviewed" : "Mark as viewed"}
+				className={cn(
+					"hidden group-hover/file:flex items-center justify-end w-[34px] shrink-0",
+					!canToggleViewed && "cursor-not-allowed opacity-40",
+				)}
+				title={
+					canToggleViewed
+						? isViewed
+							? "Mark as unviewed"
+							: "Mark as viewed"
+						: "Sign in to persist viewed state"
+				}
 			>
 				<span
 					className={cn(
@@ -503,6 +524,7 @@ interface FlatFileItemProps {
 	threads: ReviewThread[] | undefined;
 	onSelectFile: (index: number) => void;
 	onToggleViewed: (filename: string) => void;
+	canToggleViewed: boolean;
 	fontSize: DiffFontSize;
 }
 
@@ -514,6 +536,7 @@ const FlatFileItem = memo(function FlatFileItem({
 	threads,
 	onSelectFile,
 	onToggleViewed,
+	canToggleViewed,
 	fontSize,
 }: FlatFileItemProps) {
 	const lastSlash = file.filename.lastIndexOf("/");
@@ -593,12 +616,22 @@ const FlatFileItem = memo(function FlatFileItem({
 				-{file.deletions}
 			</span>
 			<button
+				disabled={!canToggleViewed}
 				onClick={(e) => {
 					e.stopPropagation();
 					onToggleViewed(file.filename);
 				}}
-				className="hidden group-hover/file:flex items-center justify-end w-[34px] shrink-0"
-				title={isViewed ? "Mark as unviewed" : "Mark as viewed"}
+				className={cn(
+					"hidden group-hover/file:flex items-center justify-end w-[34px] shrink-0",
+					!canToggleViewed && "cursor-not-allowed opacity-40",
+				)}
+				title={
+					canToggleViewed
+						? isViewed
+							? "Mark as unviewed"
+							: "Mark as viewed"
+						: "Sign in to persist viewed state"
+				}
 			>
 				<span
 					className={cn(
@@ -625,6 +658,7 @@ export function DiffFileTree({
 	threadsByFile,
 	onToggleViewed,
 	onSetFilesViewed,
+	canToggleViewed = true,
 	defaultViewMode = "tree",
 	fontSize = "sm",
 	showFolderDiffCount = true,
@@ -716,6 +750,9 @@ export function DiffFileTree({
 									onSetFilesViewed={
 										onSetFilesViewed
 									}
+									canToggleViewed={
+										canToggleViewed
+									}
 									fontSize={fontSize}
 									showFolderDiffCount={
 										showFolderDiffCount
@@ -742,6 +779,9 @@ export function DiffFileTree({
 									}
 									onToggleViewed={
 										onToggleViewed
+									}
+									canToggleViewed={
+										canToggleViewed
 									}
 									fontSize={fontSize}
 								/>

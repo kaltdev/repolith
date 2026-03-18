@@ -2,20 +2,19 @@
 
 import { useState, useRef, useCallback, useEffect, createContext, useContext } from "react";
 import { useSearchParams } from "next/navigation";
-import { Code2, MessageCircle, ChevronRight, Sparkles } from "lucide-react";
+import { Code2, MessageCircle, ChevronRight, Sparkles, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ResizeHandle } from "@/components/ui/resize-handle";
 import {
 	PROptimisticCommentsProvider,
 	PROptimisticCommentsDisplay,
 } from "./pr-optimistic-comments-provider";
-import { useNavVisibility } from "@/components/shared/nav-visibility-provider";
 
 const OverviewActiveContext = createContext(false);
 export const useOverviewActive = () => useContext(OverviewActiveContext);
 
-type MobileTab = "diff" | "chat";
-type SidePanelTab = "conversation" | "overview";
+type MobileTab = "diff" | "chat" | "review";
+type SidePanelTab = "conversation" | "overview" | "review";
 
 interface PRDetailLayoutProps {
 	infoBar: React.ReactNode;
@@ -27,8 +26,11 @@ interface PRDetailLayoutProps {
 	conflictPanel?: React.ReactNode;
 	/** Overview panel for AI analysis */
 	overviewPanel?: React.ReactNode;
+	/** Review checklist panel */
+	reviewPanel?: React.ReactNode;
 	commentCount: number;
 	fileCount: number;
+	reviewCount?: number;
 	hasReviews?: boolean;
 }
 
@@ -39,15 +41,22 @@ export function PRDetailLayout({
 	commentForm,
 	conflictPanel,
 	overviewPanel,
+	reviewPanel,
 	commentCount,
 	fileCount,
+	reviewCount = 0,
 }: PRDetailLayoutProps) {
 	const searchParams = useSearchParams();
 
-	const [mobileTab, setMobileTab] = useState<MobileTab>("diff");
+	const [mobileTab, setMobileTab] = useState<MobileTab>(() => {
+		const tabParam = searchParams.get("tab");
+		if (tabParam === "review" && reviewPanel) return "review";
+		return "diff";
+	});
 	const [sidePanelTab, setSidePanelTab] = useState<SidePanelTab>(() => {
 		const tabParam = searchParams.get("tab");
 		if (tabParam === "overview") return "overview";
+		if (tabParam === "review" && reviewPanel) return "review";
 		return "conversation";
 	});
 	const [isDragging, setIsDragging] = useState(false);
@@ -59,25 +68,6 @@ export function PRDetailLayout({
 	const [isScrolled, setIsScrolled] = useState(false);
 	const conversationScrollRef = useRef<HTMLDivElement>(null);
 	const overviewWrapperRef = useRef<HTMLDivElement>(null);
-
-	const { setNavHidden } = useNavVisibility();
-	const lastScrollYRef = useRef(0);
-
-	const handleScrollForNav = useCallback(
-		(e: React.UIEvent<HTMLDivElement>) => {
-			const scrollY = e.currentTarget.scrollTop;
-			const delta = scrollY - lastScrollYRef.current;
-
-			if (delta > 10 && scrollY > 50) {
-				setNavHidden(true);
-			} else if (delta < -10) {
-				setNavHidden(false);
-			}
-
-			lastScrollYRef.current = scrollY;
-		},
-		[setNavHidden],
-	);
 
 	const SK = "pr-split-adjusted";
 	const [splitRatio, setSplitRatio] = useState(() => {
@@ -204,6 +194,16 @@ export function PRDetailLayout({
 								label: "Chat",
 								count: commentCount,
 							},
+							...(reviewPanel
+								? [
+										{
+											key: "review" as const,
+											icon: ListChecks,
+											label: "Review",
+											count: reviewCount,
+										},
+									]
+								: []),
 						] as const
 					).map(({ key, icon: Icon, label, count }) => (
 						<button
@@ -331,6 +331,15 @@ export function PRDetailLayout({
 												label: "Conversation",
 												icon: MessageCircle,
 											},
+											...(reviewPanel
+												? [
+														{
+															key: "review" as const,
+															label: "Review",
+															icon: ListChecks,
+														},
+													]
+												: []),
 											{
 												key: "overview" as const,
 												label: "AI Overview",
@@ -382,6 +391,24 @@ export function PRDetailLayout({
 															>
 																{
 																	commentCount
+																}
+															</span>
+														)}
+													{key ===
+														"review" &&
+														reviewCount >
+															0 && (
+															<span
+																className={cn(
+																	"text-[10px] font-mono px-1 py-0.5 rounded-full",
+																	sidePanelTab ===
+																		key
+																		? "bg-muted text-foreground/70"
+																		: "bg-muted/50 text-muted-foreground/60",
+																)}
+															>
+																{
+																	reviewCount
 																}
 															</span>
 														)}
@@ -472,6 +499,30 @@ export function PRDetailLayout({
 									</OverviewActiveContext.Provider>
 								</div>
 
+								{reviewPanel && (
+									<div
+										className={cn(
+											"flex-1 min-h-0 flex flex-col",
+											sidePanelTab !==
+												"review" &&
+												"hidden",
+										)}
+										onScrollCapture={(
+											e,
+										) =>
+											setIsScrolled(
+												(
+													e.target as HTMLElement
+												)
+													.scrollTop >
+													0,
+											)
+										}
+									>
+										{reviewPanel}
+									</div>
+								)}
+
 								{sidePanelTab === "conversation" &&
 									commentForm && (
 										<div className="shrink-0 max-w-[1000px] mx-auto w-full px-3 pb-6">
@@ -511,6 +562,18 @@ export function PRDetailLayout({
 							</div>
 						)}
 					</div>
+					{reviewPanel && (
+						<div
+							className={cn(
+								"flex-1 min-h-0 flex flex-col",
+								mobileTab === "review"
+									? "flex"
+									: "hidden",
+							)}
+						>
+							{reviewPanel}
+						</div>
+					)}
 				</div>
 			</div>
 		</PROptimisticCommentsProvider>

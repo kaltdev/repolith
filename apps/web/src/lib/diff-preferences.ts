@@ -11,7 +11,7 @@ export interface DiffPreferences {
 	showFolderDiffCount: boolean;
 }
 
-const DEFAULT_PREFERENCES: DiffPreferences = {
+export const DEFAULT_DIFF_PREFERENCES: DiffPreferences = {
 	splitView: false,
 	wordWrap: true,
 	defaultViewMode: "tree",
@@ -20,19 +20,19 @@ const DEFAULT_PREFERENCES: DiffPreferences = {
 };
 
 export function getDiffPreferences(): DiffPreferences {
-	if (typeof window === "undefined") return DEFAULT_PREFERENCES;
+	if (typeof window === "undefined") return DEFAULT_DIFF_PREFERENCES;
 	try {
 		const raw = localStorage.getItem(STORAGE_KEY);
-		if (!raw) return DEFAULT_PREFERENCES;
+		if (!raw) return DEFAULT_DIFF_PREFERENCES;
 		const parsed = JSON.parse(raw) as Partial<DiffPreferences>;
-		return { ...DEFAULT_PREFERENCES, ...parsed };
+		return { ...DEFAULT_DIFF_PREFERENCES, ...parsed };
 	} catch {
-		return DEFAULT_PREFERENCES;
+		return DEFAULT_DIFF_PREFERENCES;
 	}
 }
 
 export function setDiffPreferences(prefs: Partial<DiffPreferences>): DiffPreferences {
-	if (typeof window === "undefined") return DEFAULT_PREFERENCES;
+	if (typeof window === "undefined") return DEFAULT_DIFF_PREFERENCES;
 	try {
 		const current = getDiffPreferences();
 		const updated = { ...current, ...prefs };

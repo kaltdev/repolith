@@ -7,6 +7,7 @@ import {
 	invalidatePullRequestCache,
 	invalidateAllPRBundlesForRepo,
 	getRepoBranches,
+	getPullRequestBundle,
 } from "@/lib/github";
 import { getErrorMessage } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -58,6 +59,23 @@ async function revalidateAfterPRMutation(
 	if (scopes.includes("layout")) {
 		revalidatePath(`/repos/${owner}/${repo}`, "layout");
 	}
+}
+
+async function resolvePRHeadTarget(
+	owner: string,
+	repo: string,
+	pullNumber: number,
+): Promise<{ owner: string; repo: string; branch: string }> {
+	const bundle = await getPullRequestBundle(owner, repo, pullNumber);
+	if (!bundle) {
+		throw new Error("Pull request not found");
+	}
+
+	return {
+		owner: bundle.pr.head_repo_owner || owner,
+		repo: bundle.pr.head_repo_name || repo,
+		branch: bundle.pr.head.ref,
+	};
 }
 
 export async function fetchBranchNames(owner: string, repo: string) {
@@ -389,11 +407,12 @@ export async function commitSuggestion(
 	if (!octokit) return { error: "Not authenticated" };
 
 	try {
+		const target = await resolvePRHeadTarget(owner, repo, pullNumber);
 		const { data: fileData } = await octokit.repos.getContent({
-			owner,
-			repo,
+			owner: target.owner,
+			repo: target.repo,
 			path,
-			ref: branch,
+			ref: target.branch || branch,
 		});
 
 		if (Array.isArray(fileData) || fileData.type !== "file") {
@@ -412,20 +431,20 @@ export async function commitSuggestion(
 		const suggestionLines = suggestion.length > 0 ? suggestion.split("\n") : [];
 		const newContent = [...before, ...suggestionLines, ...after].join("\n");
 
-		await octokit.repos.createOrUpdateFileContents({
-			owner,
-			repo,
+		const { data } = await octokit.repos.createOrUpdateFileContents({
+			owner: target.owner,
+			repo: target.repo,
 			path,
 			message:
 				commitMessage ||
 				`Apply suggestion to ${path} (lines ${startLine}-${endLine})`,
 			content: Buffer.from(newContent).toString("base64"),
 			sha: (fileData as { sha: string }).sha,
-			branch,
+			branch: target.branch || branch,
 		});
 
 		await revalidateAfterPRMutation(owner, repo, pullNumber, "suggestion");
-		return { success: true };
+		return { success: true, commitSha: data.commit?.sha ?? null };
 	} catch (e: unknown) {
 		return { error: getErrorMessage(e) || "Failed to commit suggestion" };
 	}
@@ -445,14 +464,15 @@ export async function commitFileEditOnPR(
 	if (!octokit) return { error: "Not authenticated" };
 
 	try {
+		const target = await resolvePRHeadTarget(owner, repo, pullNumber);
 		const { data } = await octokit.repos.createOrUpdateFileContents({
-			owner,
-			repo,
+			owner: target.owner,
+			repo: target.repo,
 			path,
 			message: commitMessage,
 			content: Buffer.from(content).toString("base64"),
 			sha,
-			branch,
+			branch: target.branch || branch,
 		});
 		await revalidateAfterPRMutation(owner, repo, pullNumber, "fileCommit");
 		return { success: true, newSha: data.content?.sha };

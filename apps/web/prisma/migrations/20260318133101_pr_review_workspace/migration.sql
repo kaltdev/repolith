@@ -1,0 +1,8 @@
+-- RenameIndex
+ALTER INDEX "pull_request_checklist_states_userId_owner_repo_pullNumber_item" RENAME TO "pull_request_checklist_states_userId_owner_repo_pullNumber__key";
+
+-- RenameIndex
+ALTER INDEX "pull_request_reviewer_file_states_owner_repo_pullNumber_viewed_" RENAME TO "pull_request_reviewer_file_states_owner_repo_pullNumber_vie_idx";
+
+-- RenameIndex
+ALTER INDEX "pull_request_reviewer_file_states_userId_owner_repo_pullNumber_" RENAME TO "pull_request_reviewer_file_states_userId_owner_repo_pullNum_key";

@@ -110,7 +110,6 @@ const DiffSnippet = memo(function DiffSnippet({
 	repo,
 	pullNumber,
 	headSha,
-	headBranch,
 	hideNewBadge,
 }: {
 	snippet: string;
@@ -121,7 +120,6 @@ const DiffSnippet = memo(function DiffSnippet({
 	repo?: string;
 	pullNumber?: number;
 	headSha?: string;
-	headBranch?: string;
 	hideNewBadge?: boolean;
 }) {
 	const { themeId } = useColorTheme();
@@ -155,7 +153,6 @@ const DiffSnippet = memo(function DiffSnippet({
 			repo={repo}
 			pullNumber={pullNumber}
 			headSha={headSha}
-			headBranch={headBranch}
 			hideNewBadge={hideNewBadge}
 		/>
 	);
@@ -173,7 +170,6 @@ function ChangeGroupCard({
 	repo,
 	pullNumber,
 	headSha,
-	headBranch,
 }: {
 	group: ChangeGroup;
 	isViewed: boolean;
@@ -186,7 +182,6 @@ function ChangeGroupCard({
 	repo?: string;
 	pullNumber?: number;
 	headSha?: string;
-	headBranch?: string;
 }) {
 	return (
 		<div
@@ -444,9 +439,6 @@ function ChangeGroupCard({
 											}
 											headSha={
 												headSha
-											}
-											headBranch={
-												headBranch
 											}
 											hideNewBadge
 										/>

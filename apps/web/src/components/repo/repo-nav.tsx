@@ -222,7 +222,7 @@ export function RepoNav({
 			<div className="overflow-hidden">
 				<div
 					ref={containerRef}
-					className="relative flex items-center gap-1 justify-between pb-0 overflow-x-auto no-scrollbar border-b border-border px-4"
+					className="relative flex items-center gap-1 justify-between pb-0 overflow-x-auto no-scrollbar border-border px-4"
 				>
 					<div className="flex items-center gap-1">
 						{tabs.map((tab) => (

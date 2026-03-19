@@ -27,3 +27,6 @@ Try to follow the design of the rest of the codebase as much as possible.
 Avoid loading spinners and prefer skeleton UI for loading states.
 
 Open PRs against `main`. Include a short description of what changed and why, link the related issue when there is one, and attach screenshots or short recordings for UI or extension changes. Call out schema, env, or migration changes explicitly.
+
+## Agent / Documentation Planning Note
+When creating documentation plans (e.g. drafts, outlines, or exploratory docs in agents.md or similar files), treat them as working documents and do not commit them to the repository unless explicitly instructed. These files are intended for internal iteration, planning, or AI-assisted workflows and should remain local or be shared externally (e.g. in discussions) instead of being merged into the codebase.

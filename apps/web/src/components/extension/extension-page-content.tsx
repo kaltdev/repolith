@@ -111,7 +111,7 @@ const ROUTE_MAPPINGS = [
 	{ from: "/:owner/:repo", to: "/:owner/:repo" },
 	{ from: "/pull/:n", to: "/pull/:n" },
 	{ from: "/commit/:sha", to: "/commit/:sha" },
-	{ from: "/notifications", to: "/notifications" },
+	{ from: "/notifications", to: "/dashboard?panel=notifications" },
 	{ from: "/trending", to: "/trending" },
 	{ from: "/issues", to: "/issues" },
 	{ from: "/pulls", to: "/prs" },

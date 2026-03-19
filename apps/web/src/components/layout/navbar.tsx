@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
 	LogOut,
 	ExternalLink,
@@ -18,6 +18,12 @@ import {
 import dynamic from "next/dynamic";
 
 const CommandMenu = dynamic(() => import("@/components/command-menu").then((m) => m.CommandMenu));
+import { NotificationFeed } from "@/components/notifications/notification-feed";
+import { SettingsDialog } from "@/components/settings/settings-dialog";
+import type { TabId } from "@/components/settings/settings-content";
+import { NavbarGhostButton } from "@/components/shared/floating-ghost-button";
+import { useMutationEvents } from "@/components/shared/mutation-event-provider";
+import { useNavVisibility } from "@/components/shared/nav-visibility-provider";
 import { useColorTheme } from "@/components/theme/theme-provider";
 import { signOut } from "@/lib/auth-client";
 import {
@@ -30,27 +36,37 @@ import {
 	DropdownMenuGroup,
 	DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { SettingsDialog } from "@/components/settings/settings-dialog";
-import type { TabId } from "@/components/settings/settings-content";
-import { NavbarGhostButton } from "@/components/shared/floating-ghost-button";
-import { useMutationEvents } from "@/components/shared/mutation-event-provider";
-import { useNavVisibility } from "@/components/shared/nav-visibility-provider";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { cn } from "@/lib/utils";
 import { NotificationSheet } from "@/components/layout/notification-sheet";
 import { $Session } from "@/lib/auth";
-import type { NotificationItem } from "@/lib/github-types";
+import type { NotificationEnrichedItem, NotificationItem } from "@/lib/github-types";
 import { APP_ROUTES } from "@/app-routes";
+
+type NavbarNotificationItem = NotificationItem | NotificationEnrichedItem;
 
 interface AppNavbarProps {
 	session: $Session;
-	notifications: NotificationItem[];
+	notifications: NavbarNotificationItem[];
+}
+
+function isNotificationEnriched(item: NavbarNotificationItem): item is NotificationEnrichedItem {
+	return "updatedAt" in item && "primaryAction" in item;
+}
+
+function isNotificationRaw(item: NavbarNotificationItem): item is NotificationItem {
+	return "updated_at" in item && "subject" in item && "repository" in item;
 }
 
 export function AppNavbar({ session, notifications }: AppNavbarProps) {
 	const { mode, toggleMode } = useColorTheme();
 	const { subscribe } = useMutationEvents();
 	const { isNavHidden } = useNavVisibility();
+	const isMobile = useIsMobile();
 	const pathname = usePathname();
+	const searchParams = useSearchParams();
+	const router = useRouter();
 	const segments = pathname.split("/").filter(Boolean);
 	const isRepoPage = segments.length >= 2 && !APP_ROUTES.has(segments[0]);
 	const gh = session.githubUser;
@@ -58,6 +74,7 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 	const [settingsTab, setSettingsTab] = useState<TabId | undefined>();
 	const [notifOpen, setNotifOpen] = useState(false);
 	const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+	const [panelWidth, setPanelWidth] = useState(440);
 
 	useEffect(() => {
 		return subscribe((event) => {
@@ -91,8 +108,75 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 		}
 	}, []);
 
+	useEffect(() => {
+		const saved = localStorage.getItem("notif-panel-width");
+		if (!saved) return;
+		const width = Number(saved);
+		if (Number.isFinite(width)) {
+			setPanelWidth(Math.min(640, Math.max(380, width)));
+		}
+	}, []);
+
+	useEffect(() => {
+		function onKeyDown(event: KeyboardEvent) {
+			const target = event.target as HTMLElement | null;
+			const isTypingTarget =
+				target?.tagName === "INPUT" ||
+				target?.tagName === "TEXTAREA" ||
+				target?.isContentEditable;
+			if (isTypingTarget) return;
+			if (event.key.toLowerCase() === "n") {
+				event.preventDefault();
+				setNotifOpen((prev) => !prev);
+			}
+		}
+
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, []);
+
+	useEffect(() => {
+		if (pathname !== "/dashboard") return;
+		if (searchParams.get("panel") !== "notifications") return;
+		setNotifOpen(true);
+
+		const params = new URLSearchParams(searchParams.toString());
+		params.delete("panel");
+		const next = params.size > 0 ? `/dashboard?${params.toString()}` : "/dashboard";
+		router.replace(next);
+	}, [pathname, router, searchParams]);
+
+	const handleResizeStart = (event: React.MouseEvent) => {
+		if (isMobile) return;
+		event.preventDefault();
+		const startX = event.clientX;
+		const startWidth = panelWidth;
+		let finalWidth = startWidth;
+		const onMove = (moveEvent: MouseEvent) => {
+			const delta = startX - moveEvent.clientX;
+			const next = Math.min(640, Math.max(380, startWidth + delta));
+			finalWidth = next;
+			setPanelWidth(next);
+		};
+		const onUp = () => {
+			localStorage.setItem("notif-panel-width", String(finalWidth));
+			document.removeEventListener("mousemove", onMove);
+			document.removeEventListener("mouseup", onUp);
+			document.body.style.userSelect = "";
+			document.body.style.cursor = "";
+		};
+		document.addEventListener("mousemove", onMove);
+		document.addEventListener("mouseup", onUp);
+		document.body.style.userSelect = "none";
+		document.body.style.cursor = "col-resize";
+	};
+
 	const visibleNotifs = notifications.filter((n) => !doneIds.has(n.id));
 	const unreadCount = visibleNotifs.filter((n) => n.unread).length;
+	const enrichedNotifications = notifications.filter(isNotificationEnriched);
+	const canUseNotificationFeed = enrichedNotifications.length === notifications.length;
+	const rawNotifications = notifications.filter(isNotificationRaw);
+	const canUseNotificationSheet = rawNotifications.length === notifications.length;
 
 	return (
 		<header
@@ -405,13 +489,50 @@ export function AppNavbar({ session, notifications }: AppNavbarProps) {
 				</div>
 			</nav>
 
-			<NotificationSheet
-				open={notifOpen}
-				onOpenChange={setNotifOpen}
-				notifications={notifications}
-				doneIds={doneIds}
-				setDoneIds={setDoneIds}
-			/>
+			{canUseNotificationFeed ? (
+				<Sheet open={notifOpen} onOpenChange={setNotifOpen}>
+					<SheetContent
+						side="right"
+						showCloseButton={false}
+						className="w-full border-l border-border p-0 sm:max-w-none"
+						style={{ width: isMobile ? "100vw" : panelWidth }}
+						title="Notifications"
+					>
+						{!isMobile && (
+							<div
+								onMouseDown={handleResizeStart}
+								className="absolute top-0 left-0 h-full w-1 -translate-x-1/2 cursor-col-resize"
+							/>
+						)}
+						<div className="flex items-center justify-between border-b border-border px-4 py-3 shrink-0">
+							<div className="flex items-center gap-2">
+								<Bell className="h-3.5 w-3.5 text-muted-foreground" />
+								<span className="text-[12px] font-medium">
+									Notifications
+								</span>
+								{unreadCount > 0 && (
+									<span className="rounded-full bg-foreground px-1.5 py-0.5 text-[9px] font-mono tabular-nums text-background">
+										{unreadCount}
+									</span>
+								)}
+							</div>
+						</div>
+						<NotificationFeed
+							items={enrichedNotifications}
+							persistTabInQuery={false}
+							onOpenItem={() => setNotifOpen(false)}
+						/>
+					</SheetContent>
+				</Sheet>
+			) : canUseNotificationSheet ? (
+				<NotificationSheet
+					open={notifOpen}
+					onOpenChange={setNotifOpen}
+					notifications={rawNotifications}
+					doneIds={doneIds}
+					setDoneIds={setDoneIds}
+				/>
+			) : null}
 
 			<SettingsDialog
 				open={settingsOpen}

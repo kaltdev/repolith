@@ -260,7 +260,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/notifications"
+				"regexSubstitution": "https://repolith.my.id/dashboard?panel=notifications"
 			}
 		},
 		"condition": {

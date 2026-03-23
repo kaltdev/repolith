@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useTransition, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import {
@@ -69,13 +69,21 @@ const sortLabels: Record<SortType, string> = {
 
 const sortCycle: SortType[] = ["updated", "newest", "oldest", "comments", "reactions"];
 
+function isNestedInteractiveTarget(target: EventTarget | null, currentTarget: HTMLElement) {
+	if (!(target instanceof HTMLElement)) return false;
+	const interactiveAncestor = target.closest(
+		"a,button,input,select,textarea,[role='button'],[role='link']",
+	);
+	return interactiveAncestor !== null && interactiveAncestor !== currentTarget;
+}
+
 export function IssuesList({
 	owner,
 	repo,
 	openIssues,
 	closedIssues,
-	openCount,
-	closedCount,
+	openCount: _openCount,
+	closedCount: _closedCount,
 	onAuthorFilter,
 }: {
 	owner: string;
@@ -90,6 +98,7 @@ export function IssuesList({
 		author: string,
 	) => Promise<{ open: Issue[]; closed: Issue[] }>;
 }) {
+	const router = useRouter();
 	const searchParams = useSearchParams();
 	const tabParam = searchParams.get("tab");
 	const initialTab: TabState =
@@ -356,7 +365,7 @@ export function IssuesList({
 	]);
 
 	const searchInputRef = useRef<HTMLInputElement>(null);
-	const issueLinksRef = useRef<(HTMLAnchorElement | null)[]>([]);
+	const issueLinksRef = useRef<(HTMLDivElement | null)[]>([]);
 	const listContainerRef = useRef<HTMLDivElement>(null);
 
 	// Focus search bar when issues tab is shown (keyboard-first UX)
@@ -979,14 +988,47 @@ export function IssuesList({
 					const reactionCount = issue.reactions?.["+1"] ?? 0;
 
 					return (
-						<Link
+						<div
 							key={issue.id}
 							ref={(el) => {
 								issueLinksRef.current[index] = el;
 							}}
-							href={`/${owner}/${repo}/issues/${issue.number}`}
-							className="group flex items-start gap-3 px-4 py-3 hover:bg-muted/50 dark:hover:bg-white/[0.02] transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background rounded-sm"
+							role="link"
 							tabIndex={0}
+							onClick={(e) => {
+								if (
+									isNestedInteractiveTarget(
+										e.target,
+										e.currentTarget,
+									)
+								) {
+									return;
+								}
+								router.push(
+									`/${owner}/${repo}/issues/${issue.number}`,
+								);
+							}}
+							onKeyDown={(e) => {
+								if (
+									isNestedInteractiveTarget(
+										e.target,
+										e.currentTarget,
+									)
+								) {
+									return;
+								}
+								if (
+									e.key !== "Enter" &&
+									e.key !== " "
+								) {
+									return;
+								}
+								e.preventDefault();
+								router.push(
+									`/${owner}/${repo}/issues/${issue.number}`,
+								);
+							}}
+							className="group flex cursor-pointer items-start gap-3 rounded-sm px-4 py-3 transition-colors hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background dark:hover:bg-white/[0.02]"
 						>
 							{issue.state === "open" ? (
 								<CircleDot className="w-3.5 h-3.5 shrink-0 mt-0.5 text-success" />
@@ -1170,7 +1212,7 @@ export function IssuesList({
 									)}
 								</div>
 							</div>
-						</Link>
+						</div>
 					);
 				})}
 

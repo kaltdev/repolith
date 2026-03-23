@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useRef, useCallback, useTransition, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { GithubAvatar } from "@/components/shared/github-avatar";
 import {
@@ -747,6 +747,14 @@ const sortLabels: Record<SortType, string> = {
 
 const sortCycle: SortType[] = ["newest", "updated", "oldest", "comments"];
 
+function isNestedInteractiveTarget(target: EventTarget | null, currentTarget: HTMLElement) {
+	if (!(target instanceof HTMLElement)) return false;
+	const interactiveAncestor = target.closest(
+		"a,button,input,select,textarea,[role='button'],[role='link']",
+	);
+	return interactiveAncestor !== null && interactiveAncestor !== currentTarget;
+}
+
 type FetchPRPageFn = (
 	owner: string,
 	repo: string,
@@ -817,6 +825,7 @@ export function PRsList({
 	) => Promise<{ error?: string; success?: boolean }>;
 }) {
 	type TabState = "open" | "merged" | "closed";
+	const router = useRouter();
 	const searchParams = useSearchParams();
 	const tabParam = searchParams.get("tab");
 	const initialTab: TabState =
@@ -1784,19 +1793,56 @@ export function PRsList({
 							currentUserLogin.toLowerCase();
 
 					return (
-						<Link
+						<div
 							key={pr.id}
-							href={`/${owner}/${repo}/pulls/${pr.number}`}
-							onMouseEnter={() =>
+							role="link"
+							tabIndex={0}
+							onMouseEnter={() => {
 								handlePRHover(
 									pr.number,
 									pr.user?.login,
-								)
-							}
+								);
+								router.prefetch(
+									`/${owner}/${repo}/pulls/${pr.number}`,
+								);
+							}}
+							onClick={(e) => {
+								if (
+									isNestedInteractiveTarget(
+										e.target,
+										e.currentTarget,
+									)
+								) {
+									return;
+								}
+								router.push(
+									`/${owner}/${repo}/pulls/${pr.number}`,
+								);
+							}}
+							onKeyDown={(e) => {
+								if (
+									isNestedInteractiveTarget(
+										e.target,
+										e.currentTarget,
+									)
+								) {
+									return;
+								}
+								if (
+									e.key !== "Enter" &&
+									e.key !== " "
+								) {
+									return;
+								}
+								e.preventDefault();
+								router.push(
+									`/${owner}/${repo}/pulls/${pr.number}`,
+								);
+							}}
 							onContextMenu={(e) =>
 								handleContextMenu(e, pr)
 							}
-							className="group flex items-start gap-3 px-4 py-3 hover:bg-muted/50 dark:hover:bg-white/[0.02] transition-colors"
+							className="group flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background dark:hover:bg-white/[0.02]"
 						>
 							{isMerged ? (
 								<GitMerge className="w-3.5 h-3.5 shrink-0 mt-0.5 text-alert-important" />
@@ -2064,7 +2110,7 @@ export function PRsList({
 									)}
 								</div>
 							</div>
-						</Link>
+						</div>
 					);
 				})}
 

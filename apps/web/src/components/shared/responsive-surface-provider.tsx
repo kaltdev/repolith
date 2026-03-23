@@ -11,13 +11,8 @@ interface ResponsiveSurfaceContextValue {
 
 const ResponsiveSurfaceContext = createContext<ResponsiveSurfaceContextValue | null>(null);
 
-function getWindowWidth() {
-	if (typeof window === "undefined") return 0;
-	return window.innerWidth;
-}
-
 export function ResponsiveSurfaceProvider({ children }: { children: ReactNode }) {
-	const [width, setWidth] = useState(getWindowWidth);
+	const [width, setWidth] = useState(0);
 
 	useEffect(() => {
 		function handleResize() {

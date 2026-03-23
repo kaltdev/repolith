@@ -42,6 +42,7 @@ import {
 	fetchOverviewCommitActivity,
 	fetchOverviewEvents,
 	fetchOverviewCIStatus,
+	fetchCompareLinkStatus,
 } from "@/app/(app)/repos/[owner]/[repo]/overview-actions";
 
 // --- Shared UI primitives ---
@@ -228,6 +229,7 @@ function getEventDescription(event: RepoEvent): {
 	verb: string;
 	detail: string;
 	href: string | null;
+	compareBranch?: string;
 } {
 	const p = event.payload;
 	const repoName = event.repo?.name;
@@ -348,7 +350,10 @@ function timeAgo(dateStr: string): string {
 	if (hours < 24) return `${hours}h ago`;
 	const days = Math.floor(hours / 24);
 	if (days < 7) return `${days}d ago`;
-	return new Date(dateStr).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+	return new Date(dateStr).toLocaleDateString("en-US", {
+		month: "short",
+		day: "numeric",
+	});
 }
 
 // --- Filter out noise (stars, forks, watches) — only keep meaningful dev activity ---

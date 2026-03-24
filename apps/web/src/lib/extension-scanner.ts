@@ -8,7 +8,7 @@ import type {
 	CustomThemeType,
 } from "./theme-store-types";
 
-const MANIFEST_FILENAME = "better-hub-extension.json";
+const MANIFEST_FILENAME = "repolith-extension.json";
 const VALID_TYPES: CustomThemeType[] = ["theme", "icon-theme"];
 
 const ALLOWED_GITHUB_HOSTNAMES = new Set([

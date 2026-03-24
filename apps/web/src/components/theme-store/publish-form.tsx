@@ -103,7 +103,7 @@ export function PublishForm() {
 					Select one of your public GitHub repositories that contains
 					a{" "}
 					<code className="text-[11px] bg-muted px-1 py-0.5 rounded">
-						better-hub-extension.json
+						repolith-extension.json
 					</code>{" "}
 					manifest file.
 				</p>

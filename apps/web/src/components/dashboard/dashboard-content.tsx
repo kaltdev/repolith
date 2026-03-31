@@ -12,7 +12,6 @@ import {
 	Star,
 	GitFork,
 	ChevronRight,
-	CheckCircle2,
 	MessageSquare,
 	Lock,
 	Flame,
@@ -28,10 +27,18 @@ import {
 	PinOff,
 } from "lucide-react";
 import { cn, formatNumber } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { toInternalUrl, getLanguageColor } from "@/lib/github-utils";
 import { GithubAvatar } from "@/components/shared/github-avatar";
+import { DashboardLayout } from "./dashboard-layout";
+import { ActivityFeed } from "./activity-feed";
+import { IssueCard } from "./cards/issue-card";
+import { PullRequestCard } from "./cards/pull-request-card";
+import { ReviewRequestCard } from "./cards/review-request-card";
 import { RecentlyViewed } from "./recently-viewed";
+import { SavedSearchesWidget } from "./saved-searches-widget";
+import { TeamDashboard } from "./team-dashboard";
 import { CreateRepoDialog } from "@/components/repo/create-repo-dialog";
 import { markNotificationDone } from "@/app/(app)/repos/actions";
 import { useMutationEvents } from "@/components/shared/mutation-event-provider";
@@ -53,9 +60,11 @@ import type {
 	GitHubUser,
 	SearchResult,
 } from "@/lib/github-types";
+import type { DashboardPullRequestMetadataMap, TeamDashboardData } from "@/types/dashboard";
 
 const tabKeys = ["reviews", "prs", "issues", "notifs"] as const;
 type TabKey = (typeof tabKeys)[number];
+const dashboardViews = ["personal", "team"] as const;
 
 interface DashboardContentProps {
 	user: GitHubUser;
@@ -66,6 +75,9 @@ interface DashboardContentProps {
 	notifications: Array<NotificationItem>;
 	activity: Array<ActivityEvent>;
 	trending: Array<TrendingRepoItem>;
+	teamDashboard: TeamDashboardData | null;
+	reviewRequestMetadata: DashboardPullRequestMetadataMap;
+	myOpenPRMetadata: DashboardPullRequestMetadataMap;
 }
 
 function extractRepoName(repoUrl: string) {
@@ -82,6 +94,9 @@ export function DashboardContent({
 	notifications,
 	activity,
 	trending,
+	teamDashboard,
+	reviewRequestMetadata,
+	myOpenPRMetadata,
 }: DashboardContentProps) {
 	const [greeting, setGreeting] = useState<string>("");
 	const [today, setToday] = useState<string>("");
@@ -111,21 +126,109 @@ export function DashboardContent({
 		]);
 	}, [repos]);
 
-	const hasWork =
-		reviewRequests.items.length > 0 ||
-		myOpenPRs.items.length > 0 ||
-		myIssues.items.length > 0;
-
 	const [activeTab, setActiveTab] = useQueryState(
 		"tab",
 		parseAsStringLiteral(tabKeys).withDefault("reviews"),
 	);
+	const [view, setView] = useQueryState(
+		"view",
+		parseAsStringLiteral(dashboardViews).withDefault("personal"),
+	);
 	const [doneIds, setDoneIds] = useState<Set<string>>(new Set());
+	const visibleNotifs = useMemo(
+		() => notifications.filter((notif) => !doneIds.has(notif.id)),
+		[doneIds, notifications],
+	);
+
+	const personalWidgets = useMemo(
+		() => [
+			{
+				id: "review-requests" as const,
+				title: "Review Requests",
+				content: (
+					<DashboardItemList
+						sectionId="dashboard-section-reviews"
+						items={reviewRequests.items}
+						kind="review-request"
+						emptyMessage="No reviews requested"
+						pullRequestMetadata={reviewRequestMetadata}
+					/>
+				),
+			},
+			{
+				id: "my-pull-requests" as const,
+				title: "My Pull Requests",
+				content: (
+					<DashboardItemList
+						sectionId="dashboard-section-prs"
+						items={myOpenPRs.items}
+						kind="pull-request"
+						emptyMessage="No open PRs"
+						pullRequestMetadata={myOpenPRMetadata}
+					/>
+				),
+			},
+			{
+				id: "my-issues" as const,
+				title: "My Issues",
+				content: (
+					<DashboardItemList
+						sectionId="dashboard-section-issues"
+						items={myIssues.items}
+						kind="issue"
+						emptyMessage="No assigned issues"
+					/>
+				),
+			},
+			{
+				id: "activity-feed" as const,
+				title: "Activity Feed",
+				content: (
+					<ActivityFeed
+						sectionId="dashboard-section-activity"
+						activity={activity ?? []}
+					/>
+				),
+			},
+			{
+				id: "trending-repositories" as const,
+				title: "Trending Repositories",
+				content: (
+					<TrendingWidgetList
+						sectionId="dashboard-section-trending"
+						trending={trending}
+					/>
+				),
+			},
+			{
+				id: "saved-searches" as const,
+				title: "Saved Searches",
+				content: <SavedSearchesWidget />,
+			},
+		],
+		[
+			activity,
+			myIssues.items,
+			myOpenPRs.items,
+			myOpenPRMetadata,
+			reviewRequests.items,
+			reviewRequestMetadata,
+			trending,
+		],
+	);
 
 	const handleStatClick = useCallback(
 		(tab: TabKey) => {
 			setActiveTab(tab);
-			document.getElementById("work-tabs")?.scrollIntoView({
+			const targetId =
+				tab === "reviews"
+					? "dashboard-section-reviews"
+					: tab === "prs"
+						? "dashboard-section-prs"
+						: tab === "issues"
+							? "dashboard-section-issues"
+							: "notifications-panel";
+			document.getElementById(targetId)?.scrollIntoView({
 				behavior: "smooth",
 				block: "nearest",
 			});
@@ -137,99 +240,188 @@ export function DashboardContent({
 		<div className="flex flex-col flex-1 min-h-0 w-full py-2">
 			{/* Header */}
 			<div className="shrink-0 pb-3">
-				<h1
-					className="text-sm font-medium text-primary"
-					suppressHydrationWarning
-				>
-					{greeting && `${greeting}, `}
-					<b>{user.name || user.login}</b>
-				</h1>
-				<p
-					className="text-[11px] text-muted-foreground font-mono"
-					suppressHydrationWarning
-				>
-					{today}
-				</p>
+				<div className="flex flex-wrap items-start justify-between gap-3">
+					<div>
+						<h1
+							className="text-sm font-medium text-primary"
+							suppressHydrationWarning
+						>
+							{greeting && `${greeting}, `}
+							<b>{user.name || user.login}</b>
+						</h1>
+						<p
+							className="text-[11px] text-muted-foreground font-mono"
+							suppressHydrationWarning
+						>
+							{today}
+						</p>
+					</div>
+					{teamDashboard?.orgs.length ? (
+						<div
+							className="inline-flex rounded-md border border-border p-1"
+							role="tablist"
+							aria-label="Dashboard view"
+						>
+							<Button
+								type="button"
+								onClick={() => setView("personal")}
+								role="tab"
+								aria-selected={view === "personal"}
+								variant={
+									view === "personal"
+										? "secondary"
+										: "ghost"
+								}
+								size="sm"
+								className="h-8 px-3 text-[11px] font-mono uppercase tracking-wider"
+							>
+								Personal
+							</Button>
+							<Button
+								type="button"
+								onClick={() => setView("team")}
+								role="tab"
+								aria-selected={view === "team"}
+								variant={
+									view === "team"
+										? "secondary"
+										: "ghost"
+								}
+								size="sm"
+								className="h-8 px-3 text-[11px] font-mono uppercase tracking-wider"
+							>
+								Team
+							</Button>
+						</div>
+					) : null}
+				</div>
 			</div>
 
 			<ExtensionBanner />
 
-			{/* Two-column layout */}
-			<div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 pb-2">
-				{/* Left — overview + work items */}
-				<div className="lg:w-1/2 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pr-2">
-					{/* Stats */}
-					<div className="shrink-0 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
-						<Stat
-							icon={<Eye className="w-3.5 h-3.5" />}
-							label="Needs review"
-							value={reviewRequests.total_count}
-							accent={reviewRequests.total_count > 0}
-							active={activeTab === "reviews"}
-							onClick={() => handleStatClick("reviews")}
-						/>
-						<Stat
-							icon={
-								<GitPullRequest className="w-3.5 h-3.5" />
-							}
-							label="Open PRs"
-							value={myOpenPRs.total_count}
-							accent={myOpenPRs.total_count > 0}
-							active={activeTab === "prs"}
-							onClick={() => handleStatClick("prs")}
-						/>
-						<Stat
-							icon={<CircleDot className="w-3.5 h-3.5" />}
-							label="Assigned Issues"
-							value={myIssues.total_count}
-							accent={myIssues.total_count > 0}
-							active={activeTab === "issues"}
-							onClick={() => handleStatClick("issues")}
-						/>
-						<Stat
-							icon={<Bell className="w-3.5 h-3.5" />}
-							label="Notifs"
-							value={
-								notifications.filter(
-									(n) =>
-										n.unread &&
-										!doneIds.has(n.id),
-								).length
-							}
-							accent={
-								notifications.filter(
-									(n) =>
-										n.unread &&
-										!doneIds.has(n.id),
-								).length > 0
-							}
-							active={activeTab === "notifs"}
-							onClick={() => handleStatClick("notifs")}
-						/>
-					</div>
+			<div className="flex flex-col gap-3 pb-2">
+				{view === "team" ? (
+					<TeamDashboard initialData={teamDashboard} />
+				) : (
+					<>
+						<div className="shrink-0 grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+							<Stat
+								icon={
+									<Eye className="w-3.5 h-3.5" />
+								}
+								label="Needs review"
+								value={reviewRequests.total_count}
+								accent={
+									reviewRequests.total_count >
+									0
+								}
+								active={activeTab === "reviews"}
+								onClick={() =>
+									handleStatClick("reviews")
+								}
+							/>
+							<Stat
+								icon={
+									<GitPullRequest className="w-3.5 h-3.5" />
+								}
+								label="Open PRs"
+								value={myOpenPRs.total_count}
+								accent={myOpenPRs.total_count > 0}
+								active={activeTab === "prs"}
+								onClick={() =>
+									handleStatClick("prs")
+								}
+							/>
+							<Stat
+								icon={
+									<CircleDot className="w-3.5 h-3.5" />
+								}
+								label="Assigned Issues"
+								value={myIssues.total_count}
+								accent={myIssues.total_count > 0}
+								active={activeTab === "issues"}
+								onClick={() =>
+									handleStatClick("issues")
+								}
+							/>
+							<Stat
+								icon={
+									<Bell className="w-3.5 h-3.5" />
+								}
+								label="Notifs"
+								value={
+									visibleNotifs.filter(
+										(notif) =>
+											notif.unread,
+									).length
+								}
+								accent={visibleNotifs.some(
+									(notif) => notif.unread,
+								)}
+								active={activeTab === "notifs"}
+								onClick={() =>
+									handleStatClick("notifs")
+								}
+							/>
+						</div>
 
-					{/* Tabbed work panel */}
-					<WorkTabs
-						reviewRequests={reviewRequests}
-						myOpenPRs={myOpenPRs}
-						myIssues={myIssues}
-						notifications={notifications}
-						hasWork={hasWork}
-						activeTab={activeTab}
-						activity={activity ?? []}
-						doneIds={doneIds}
-						setDoneIds={setDoneIds}
-					/>
-				</div>
+						<DashboardLayout widgets={personalWidgets} />
 
-				{/* Right — recently viewed + repos/trending */}
-				<div className="lg:w-1/2 lg:min-h-0 lg:overflow-hidden flex flex-col gap-3 lg:pl-2">
-					{/* Recently Viewed */}
-					<RecentlyViewed />
-
-					{/* Repos + Trending (tabbed) */}
-					<ReposTabs repos={repos} trending={trending} />
-				</div>
+						<div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+							<section
+								id="notifications-panel"
+								className="rounded-md border border-border"
+							>
+								<div className="border-b border-border px-4 py-2">
+									<h2 className="text-xs font-mono uppercase tracking-wider text-muted-foreground">
+										Notifications
+									</h2>
+								</div>
+								<div>
+									{visibleNotifs.length >
+									0 ? (
+										visibleNotifs.map(
+											(notif) => (
+												<NotificationRow
+													key={
+														notif.id
+													}
+													notif={
+														notif
+													}
+													onDone={(
+														id,
+													) =>
+														setDoneIds(
+															(
+																prev,
+															) =>
+																new Set(
+																	[
+																		...prev,
+																		id,
+																	],
+																),
+														)
+													}
+												/>
+											),
+										)
+									) : (
+										<EmptyTab message="No notifications" />
+									)}
+								</div>
+							</section>
+							<RecentlyViewed />
+							<div className="xl:col-span-2">
+								<ReposTabs
+									repos={repos}
+									trending={[]}
+								/>
+							</div>
+						</div>
+					</>
+				)}
 			</div>
 		</div>
 	);
@@ -274,101 +466,125 @@ function ExtensionBanner() {
 	);
 }
 
-function WorkTabs({
-	reviewRequests,
-	myOpenPRs,
-	myIssues,
-	notifications,
-	hasWork,
-	activeTab,
-	activity,
-	doneIds,
-	setDoneIds,
-}: {
-	reviewRequests: SearchResult<IssueItem>;
-	myOpenPRs: SearchResult<IssueItem>;
-	myIssues: SearchResult<IssueItem>;
-	notifications: Array<NotificationItem>;
-	hasWork: boolean;
-	activeTab: TabKey;
-	activity: Array<ActivityEvent>;
-	doneIds: Set<string>;
-	setDoneIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-}) {
-	const visibleNotifs = notifications.filter((n) => !doneIds.has(n.id));
-
-	if (!hasWork && activeTab !== "notifs") {
-		return (
-			<div className="flex-1 min-h-0 border border-border py-12 text-center">
-				<CheckCircle2 className="w-5 h-5 text-muted-foreground mx-auto mb-2" />
-				<p className="text-xs text-muted-foreground font-mono">
-					Nothing needs your attention
-				</p>
-			</div>
-		);
-	}
-
-	return (
-		<div
-			id="work-tabs"
-			className="flex-1 min-h-0 flex flex-col border border-border overflow-y-auto rounded-md"
-		>
-			{/* Activity marquee */}
-			<Suspense fallback={<ActivityMarqueeSkeleton />}>
-				<ActivityMarquee activity={activity ?? []} />
-			</Suspense>
-			{activeTab === "reviews" &&
-				(reviewRequests.items.length > 0 ? (
-					reviewRequests.items.map((pr) => (
-						<ItemRow key={pr.id} item={pr} type="pr" />
-					))
-				) : (
-					<EmptyTab message="No reviews requested" />
-				))}
-			{activeTab === "prs" &&
-				(myOpenPRs.items.length > 0 ? (
-					myOpenPRs.items.map((pr) => (
-						<ItemRow key={pr.id} item={pr} type="pr" />
-					))
-				) : (
-					<EmptyTab message="No open PRs" />
-				))}
-			{activeTab === "issues" &&
-				(myIssues.items.length > 0 ? (
-					myIssues.items.map((issue) => (
-						<ItemRow key={issue.id} item={issue} type="issue" />
-					))
-				) : (
-					<EmptyTab message="No assigned issues" />
-				))}
-			{activeTab === "notifs" &&
-				(visibleNotifs.length > 0 ? (
-					visibleNotifs.map((notif) => (
-						<NotificationRow
-							key={notif.id}
-							notif={notif}
-							onDone={(id) =>
-								setDoneIds(
-									(prev) =>
-										new Set([
-											...prev,
-											id,
-										]),
-								)
-							}
-						/>
-					))
-				) : (
-					<EmptyTab message="No notifications" />
-				))}
-		</div>
-	);
-}
-
 function EmptyTab({ message }: { message: string }) {
 	return (
 		<div className="py-10 text-center">
 			<p className="text-xs text-muted-foreground/50 font-mono">{message}</p>
+		</div>
+	);
+}
+
+function DashboardItemList({
+	sectionId,
+	items,
+	kind,
+	emptyMessage,
+	pullRequestMetadata,
+}: {
+	sectionId: string;
+	items: SearchResult<IssueItem>["items"];
+	kind: "review-request" | "pull-request" | "issue";
+	emptyMessage: string;
+	pullRequestMetadata?: DashboardPullRequestMetadataMap;
+}) {
+	return (
+		<div id={sectionId} className="space-y-2 p-2">
+			{items.length > 0 ? (
+				items.map((item) => {
+					if (kind === "review-request" || kind === "pull-request") {
+						const repo = extractRepoName(item.repository_url);
+						const [owner, repoName] = repo.split("/");
+						const metadata =
+							pullRequestMetadata?.[
+								`${owner}/${repoName}#${item.number}`
+							] ?? null;
+
+						return kind === "review-request" ? (
+							<ReviewRequestCard
+								key={item.id}
+								item={item}
+								metadata={metadata}
+							/>
+						) : (
+							<PullRequestCard
+								key={item.id}
+								item={item}
+								metadata={metadata}
+							/>
+						);
+					}
+
+					return <IssueCard key={item.id} item={item} />;
+				})
+			) : (
+				<EmptyTab message={emptyMessage} />
+			)}
+		</div>
+	);
+}
+
+function ActivityFeedPreview({
+	sectionId,
+	activity,
+}: {
+	sectionId: string;
+	activity: Array<ActivityEvent>;
+}) {
+	const items = activity
+		.map((event) => getMarqueeItem(event))
+		.filter(Boolean)
+		.slice(0, 8) as Array<{
+		icon: React.ReactNode;
+		text: string;
+		href: string;
+		time: string;
+	}>;
+
+	return (
+		<div id={sectionId}>
+			<Suspense fallback={<ActivityMarqueeSkeleton />}>
+				<ActivityMarquee activity={activity} />
+			</Suspense>
+			{items.length > 0 ? (
+				items.map((item, index) => (
+					<Link
+						key={`${item.href}-${index}`}
+						href={item.href}
+						className="flex items-center gap-3 border-b border-border/60 px-4 py-2 text-sm transition-colors hover:bg-muted/50 dark:hover:bg-white/2 last:border-b-0"
+					>
+						<span className="shrink-0 text-muted-foreground/70">
+							{item.icon}
+						</span>
+						<div className="min-w-0 flex-1">
+							<div className="truncate">{item.text}</div>
+							<div className="text-[11px] font-mono text-muted-foreground/60">
+								{item.time}
+							</div>
+						</div>
+						<ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+					</Link>
+				))
+			) : (
+				<EmptyTab message="No recent activity" />
+			)}
+		</div>
+	);
+}
+
+function TrendingWidgetList({
+	sectionId,
+	trending,
+}: {
+	sectionId: string;
+	trending: Array<TrendingRepoItem>;
+}) {
+	return (
+		<div id={sectionId}>
+			{trending.length > 0 ? (
+				trending.map((repo) => <TrendingRow key={repo.id} repo={repo} />)
+			) : (
+				<EmptyTab message="No trending repositories" />
+			)}
 		</div>
 	);
 }

@@ -17,9 +17,11 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getLanguageColor } from "@/lib/github-utils";
+import { SaveSearchButton } from "./save-search-button";
 
 const searchCategories = ["code", "repos", "issues", "prs", "users"] as const;
 type SearchCategory = (typeof searchCategories)[number];
+type SavableSearchCategory = Exclude<SearchCategory, "code">;
 
 const categories: { key: SearchCategory; label: string; icon: typeof Code }[] = [
 	{ key: "code", label: "Code", icon: Code },
@@ -612,6 +614,7 @@ export function SearchContent({
 	);
 
 	const totalPages = results ? Math.ceil(Math.min(results.total_count, 1000) / perPage) : 0;
+	const canSaveSearch = query.trim().length > 0 && category !== "code";
 
 	const renderResults = () => {
 		if (!results || results.items.length === 0) return null;
@@ -724,8 +727,16 @@ export function SearchContent({
 
 			{/* Results count */}
 			{results && query.trim() && (
-				<div className="shrink-0 mb-3 text-xs text-muted-foreground/60 font-mono">
-					{results.total_count.toLocaleString()} results
+				<div className="shrink-0 mb-3 flex flex-wrap items-center justify-between gap-3">
+					<div className="text-xs text-muted-foreground/60 font-mono">
+						{results.total_count.toLocaleString()} results
+					</div>
+					{canSaveSearch ? (
+						<SaveSearchButton
+							query={query}
+							scope={category as SavableSearchCategory}
+						/>
+					) : null}
 				</div>
 			)}
 

@@ -24,6 +24,7 @@ model User {
   aiCallLogs     AiCallLog[]
   creditLedger   CreditLedger[]
   purchaseGrants PurchaseGrant[]
+  savedSearches  SavedSearch[]
 
   aiMessageCount Int       @default(0)
   lastActiveAt   DateTime?
@@ -223,6 +224,23 @@ model SearchEmbedding {
   @@index([userId, owner, repo])
   @@index([userId, contentType, contentKey])
   @@map("search_embeddings")
+}
+
+model SavedSearch {
+  id         String   @id @default(cuid())
+  userId     String   @map("user_id")
+  label      String
+  query      String
+  scope      String
+  lastUsedAt DateTime @default(now()) @map("last_used_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lastUsedAt])
+  @@index([userId, updatedAt])
+  @@map("saved_searches")
 }
 
 model PinnedItem {

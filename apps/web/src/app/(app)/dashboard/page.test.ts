@@ -4,6 +4,9 @@ const getServerSessionMock = vi.fn();
 const getNotificationsMock = vi.fn();
 const getTrendingReposMock = vi.fn();
 const getUserEventsMock = vi.fn();
+const getUserOrgsMock = vi.fn();
+const getOrgMembersMock = vi.fn();
+const getPullRequestBundleMock = vi.fn();
 const getUserReposMock = vi.fn();
 const searchIssuesMock = vi.fn();
 const warmRepoPageDataBatchMock = vi.fn();
@@ -17,6 +20,9 @@ vi.mock("@/lib/github", () => ({
 	getNotifications: getNotificationsMock,
 	getTrendingRepos: getTrendingReposMock,
 	getUserEvents: getUserEventsMock,
+	getUserOrgs: getUserOrgsMock,
+	getOrgMembers: getOrgMembersMock,
+	getPullRequestBundle: getPullRequestBundleMock,
 	getUserRepos: getUserReposMock,
 	searchIssues: searchIssuesMock,
 	warmRepoPageDataBatch: warmRepoPageDataBatchMock,
@@ -54,6 +60,9 @@ describe("DashboardPage", () => {
 		getNotificationsMock.mockReset();
 		getTrendingReposMock.mockReset();
 		getUserEventsMock.mockReset();
+		getUserOrgsMock.mockReset();
+		getOrgMembersMock.mockReset();
+		getPullRequestBundleMock.mockReset();
 		getUserReposMock.mockReset();
 		searchIssuesMock.mockReset();
 		warmRepoPageDataBatchMock.mockReset();
@@ -75,6 +84,7 @@ describe("DashboardPage", () => {
 		getUserReposMock.mockResolvedValue([{ full_name: "owner/repo" }]);
 		getNotificationsMock.mockResolvedValue([]);
 		getTrendingReposMock.mockResolvedValue([]);
+		getUserOrgsMock.mockResolvedValue([]);
 		warmRepoPageDataBatchMock.mockResolvedValue(undefined);
 
 		const { default: DashboardPage } = await import("./page");
@@ -109,6 +119,7 @@ describe("DashboardPage", () => {
 			incomplete_results: false,
 		});
 		expect(element.props.activity).toEqual([]);
+		expect(element.props.teamDashboard).toBeNull();
 		expect(waitUntilMock).toHaveBeenCalledTimes(1);
 		expect(warmRepoPageDataBatchMock).toHaveBeenCalledWith(["owner/repo"]);
 	});

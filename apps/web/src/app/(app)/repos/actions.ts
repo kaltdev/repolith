@@ -125,13 +125,18 @@ export async function createRepo(
 	if (!octokit) return { success: false, error: "Not authenticated" };
 
 	try {
+		const shouldSeedRepo =
+			autoInit || Boolean(gitignoreTemplate) || Boolean(licenseTemplate);
+
 		const common = {
 			name,
 			description: description || undefined,
 			private: isPrivate,
-			auto_init: autoInit || undefined,
-			gitignore_template: gitignoreTemplate || undefined,
-			license_template: licenseTemplate || undefined,
+			auto_init: shouldSeedRepo || undefined,
+			gitignore_template: shouldSeedRepo
+				? gitignoreTemplate || undefined
+				: undefined,
+			license_template: shouldSeedRepo ? licenseTemplate || undefined : undefined,
 		};
 
 		const { data } = org

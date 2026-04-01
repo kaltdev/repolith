@@ -211,6 +211,10 @@ export function CreateRepoDialog({ org }: { org?: string } = {}) {
 							Initialize with a README
 						</span>
 					</label>
+					<p className="-mt-2 text-[10px] font-mono text-muted-foreground/70">
+						Selecting a license or .gitignore also creates an
+						initial commit.
+					</p>
 
 					{/* .gitignore */}
 					<div>

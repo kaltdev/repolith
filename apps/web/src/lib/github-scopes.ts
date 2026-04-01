@@ -40,6 +40,13 @@ export const SCOPE_GROUPS: ScopeGroup[] = [
 		defaultOn: true,
 	},
 	{
+		id: "delete_repos",
+		label: "Delete repos",
+		description: "Delete repositories you administer",
+		reason: "Required for GitHub's repository deletion API. Without this, deleting a repository will fail even if you are an admin.",
+		scopes: ["delete_repo"],
+	},
+	{
 		id: "orgs",
 		label: "Organizations",
 		description: "Manage org memberships",

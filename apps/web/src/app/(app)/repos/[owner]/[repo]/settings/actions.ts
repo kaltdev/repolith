@@ -1,6 +1,7 @@
 "use server";
 
 import { getOctokit } from "@/lib/github";
+import { getErrorMessage, getErrorStatus } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { invalidateRepoCache } from "@/lib/repo-data-cache-vc";
 
@@ -92,7 +93,14 @@ export async function deleteRepository(owner: string, repo: string) {
 		invalidateRepoCache(owner, repo);
 		return { success: true };
 	} catch (e: unknown) {
-		const message = e instanceof Error ? e.message : "Failed to delete repository";
+		const status = getErrorStatus(e);
+		const message = getErrorMessage(e);
+		if (status === 403) {
+			return {
+				success: false,
+				error: "Deleting a repository requires GitHub admin access and the delete_repo scope. Reconnect GitHub with Delete repos enabled, then try again.",
+			};
+		}
 		return { success: false, error: message };
 	}
 }

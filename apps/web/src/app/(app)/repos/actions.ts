@@ -116,27 +116,16 @@ export async function createRepo(
 	name: string,
 	description: string,
 	isPrivate: boolean,
-	autoInit: boolean,
-	gitignoreTemplate: string,
-	licenseTemplate: string,
 	org?: string,
 ): Promise<{ success: boolean; full_name?: string; error?: string }> {
 	const octokit = await getOctokit();
 	if (!octokit) return { success: false, error: "Not authenticated" };
 
 	try {
-		const shouldSeedRepo =
-			autoInit || Boolean(gitignoreTemplate) || Boolean(licenseTemplate);
-
 		const common = {
 			name,
 			description: description || undefined,
 			private: isPrivate,
-			auto_init: shouldSeedRepo || undefined,
-			gitignore_template: shouldSeedRepo
-				? gitignoreTemplate || undefined
-				: undefined,
-			license_template: shouldSeedRepo ? licenseTemplate || undefined : undefined,
 		};
 
 		const { data } = org

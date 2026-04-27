@@ -140,7 +140,9 @@ export default async function RepoLayout({
 		? getForkSyncStatus(owner, repoName, repoData.default_branch)
 		: Promise.resolve(null);
 
-	waitUntil(prefetchPRData(owner, repoName, { prefetchIssues: !repoData.private }));
+	if (!isEmptyRepo) {
+		waitUntil(prefetchPRData(owner, repoName, { prefetchIssues: !repoData.private }));
+	}
 
 	const [cachedTree, cachedContributors, cachedLanguages, cachedBranches, cachedTags] =
 		await cachePromise;

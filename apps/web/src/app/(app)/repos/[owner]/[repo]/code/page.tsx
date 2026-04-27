@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import {
+	extractRepoPermissions,
 	getRepo,
 	getRepoContents,
 	getRepoBranches,
@@ -10,6 +11,7 @@ import {
 import { BranchSelector } from "@/components/repo/branch-selector";
 import { FileList } from "@/components/repo/file-list";
 import { CodeToolbar } from "@/components/repo/code-toolbar";
+import { EmptyRepoQuickSetup } from "@/components/repo/empty-repo-quick-setup";
 import { MarkdownRenderer } from "@/components/shared/markdown-renderer";
 import { TrackView } from "@/components/shared/track-view";
 import { deleteBranch } from "../actions";
@@ -31,20 +33,40 @@ export default async function CodePage({
 	const { owner, repo } = await params;
 
 	const repoDataPromise = getRepo(owner, repo);
-	const branchesPromise = getRepoBranches(owner, repo);
-	const tagsPromise = getRepoTags(owner, repo);
 
 	const repoData = await repoDataPromise;
 	if (!repoData) return null;
 
-	const defaultBranch = repoData.default_branch;
+	const defaultBranch = repoData.default_branch || "main";
 	const isEmptyRepo = repoData.size === 0;
+
+	if (isEmptyRepo) {
+		const permissions = extractRepoPermissions(repoData);
+		const canWrite = !!(permissions.push || permissions.admin || permissions.maintain);
+
+		return (
+			<div>
+				<TrackView
+					type="repo"
+					url={`/${owner}/${repo}`}
+					title={`${owner}/${repo}`}
+					subtitle={repoData.description || "No description"}
+					image={repoData.owner.avatar_url}
+				/>
+				<EmptyRepoQuickSetup
+					owner={owner}
+					repo={repo}
+					defaultBranch={defaultBranch}
+					canWrite={canWrite}
+				/>
+			</div>
+		);
+	}
+
 	const [branches, tags, contents, openPRs, closedPRs] = await Promise.all([
-		branchesPromise,
-		tagsPromise,
-		isEmptyRepo
-			? Promise.resolve([]) // If repo is empty, skip fetching contents
-			: getRepoContents(owner, repo, "", defaultBranch),
+		getRepoBranches(owner, repo),
+		getRepoTags(owner, repo),
+		getRepoContents(owner, repo, "", defaultBranch),
 		getRepoPullRequests(owner, repo, "open"),
 		getRepoPullRequests(owner, repo, "closed"),
 	]);

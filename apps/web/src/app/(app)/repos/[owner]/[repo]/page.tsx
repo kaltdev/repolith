@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getRepoPageData } from "@/lib/github";
+import { EmptyRepoQuickSetup } from "@/components/repo/empty-repo-quick-setup";
 import { TrackView } from "@/components/shared/track-view";
 import { RepoOverview, type RepoOverviewProps } from "@/components/repo/repo-overview";
 import {
@@ -46,6 +47,26 @@ export default async function RepoPage({
 	const isMaintainer = permissions.push || permissions.admin || permissions.maintain;
 	const isEmptyRepo = repoData.size === 0;
 
+	if (isEmptyRepo) {
+		return (
+			<div className={isMaintainer ? "flex flex-col flex-1 min-h-0" : undefined}>
+				<TrackView
+					type="repo"
+					url={`/${owner}/${repo}`}
+					title={`${owner}/${repo}`}
+					subtitle={repoData.description || "No description"}
+					image={repoData.owner.avatar_url}
+				/>
+				<EmptyRepoQuickSetup
+					owner={owner}
+					repo={repo}
+					defaultBranch={repoData.default_branch}
+					canWrite={isMaintainer}
+				/>
+			</div>
+		);
+	}
+
 	const [
 		readmeHtml,
 		initialPRs,
@@ -55,7 +76,7 @@ export default async function RepoPage({
 		initialCIStatus,
 		initialPinnedItems,
 	] = (await Promise.all([
-		isEmptyRepo ? null : revalidateReadme(owner, repo, repoData.default_branch),
+		revalidateReadme(owner, repo, repoData.default_branch),
 		isMaintainer ? getCachedOverviewPRs(owner, repo) : null,
 		isMaintainer ? getCachedOverviewIssues(owner, repo) : null,
 		isMaintainer ? getCachedOverviewEvents(owner, repo) : null,

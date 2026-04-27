@@ -14,40 +14,6 @@ import { cn } from "@/lib/utils";
 import { createRepo } from "@/app/(app)/repos/actions";
 import { useMutationEvents } from "@/components/shared/mutation-event-provider";
 
-const GITIGNORE_OPTIONS = [
-	"",
-	"Node",
-	"Python",
-	"Java",
-	"Go",
-	"Rust",
-	"Ruby",
-	"C",
-	"C++",
-	"Swift",
-	"Kotlin",
-	"Dart",
-	"Haskell",
-	"Elixir",
-	"Scala",
-	"VisualStudio",
-	"JetBrains",
-	"macOS",
-	"Windows",
-	"Linux",
-];
-
-const LICENSE_OPTIONS = [
-	{ value: "", label: "None" },
-	{ value: "mit", label: "MIT License" },
-	{ value: "apache-2.0", label: "Apache License 2.0" },
-	{ value: "gpl-3.0", label: "GNU GPLv3" },
-	{ value: "bsd-2-clause", label: "BSD 2-Clause" },
-	{ value: "bsd-3-clause", label: "BSD 3-Clause" },
-	{ value: "mpl-2.0", label: "Mozilla Public License 2.0" },
-	{ value: "unlicense", label: "The Unlicense" },
-];
-
 export function CreateRepoDialog({ org }: { org?: string } = {}) {
 	const router = useRouter();
 	const { emit } = useMutationEvents();
@@ -56,9 +22,6 @@ export function CreateRepoDialog({ org }: { org?: string } = {}) {
 	const [name, setName] = useState("");
 	const [description, setDescription] = useState("");
 	const [isPrivate, setIsPrivate] = useState(false);
-	const [autoInit, setAutoInit] = useState(true);
-	const [gitignoreTemplate, setGitignoreTemplate] = useState("");
-	const [licenseTemplate, setLicenseTemplate] = useState("");
 	const [error, setError] = useState<string | null>(null);
 	const [isPending, startTransition] = useTransition();
 
@@ -66,9 +29,6 @@ export function CreateRepoDialog({ org }: { org?: string } = {}) {
 		setName("");
 		setDescription("");
 		setIsPrivate(false);
-		setAutoInit(true);
-		setGitignoreTemplate("");
-		setLicenseTemplate("");
 		setError(null);
 	}
 
@@ -81,9 +41,6 @@ export function CreateRepoDialog({ org }: { org?: string } = {}) {
 				name.trim(),
 				description.trim(),
 				isPrivate,
-				autoInit,
-				gitignoreTemplate,
-				licenseTemplate,
 				org,
 			);
 
@@ -197,69 +154,13 @@ export function CreateRepoDialog({ org }: { org?: string } = {}) {
 						</div>
 					</div>
 
-					{/* Initialize with README */}
-					<label className="flex items-center gap-2 cursor-pointer">
-						<input
-							type="checkbox"
-							checked={autoInit}
-							onChange={(e) =>
-								setAutoInit(e.target.checked)
-							}
-							className="accent-foreground"
-						/>
-						<span className="text-xs font-mono text-muted-foreground">
-							Initialize with a README
-						</span>
-					</label>
-					<p className="-mt-2 text-[10px] font-mono text-muted-foreground/70">
-						Selecting a license or .gitignore also creates an
-						initial commit.
-					</p>
-
-					{/* .gitignore */}
-					<div>
-						<label className="block text-[11px] font-mono text-muted-foreground mb-1">
-							.gitignore template
-						</label>
-						<select
-							value={gitignoreTemplate}
-							onChange={(e) =>
-								setGitignoreTemplate(e.target.value)
-							}
-							className="w-full px-3 py-1.5 text-sm bg-background border border-border focus:border-foreground/30 focus:outline-none font-mono text-foreground"
-						>
-							<option value="">None</option>
-							{GITIGNORE_OPTIONS.filter(Boolean).map(
-								(t) => (
-									<option key={t} value={t}>
-										{t}
-									</option>
-								),
-							)}
-						</select>
-					</div>
-
-					{/* License */}
-					<div>
-						<label className="block text-[11px] font-mono text-muted-foreground mb-1">
-							License
-						</label>
-						<select
-							value={licenseTemplate}
-							onChange={(e) =>
-								setLicenseTemplate(e.target.value)
-							}
-							className="w-full px-3 py-1.5 text-sm bg-background border border-border focus:border-foreground/30 focus:outline-none font-mono text-foreground"
-						>
-							{LICENSE_OPTIONS.map((l) => (
-								<option
-									key={l.value}
-									value={l.value}
-								>
-									{l.label}
-								</option>
-							))}
-						</select>
+					<div className="rounded-md border border-border/60 bg-muted/20 px-3 py-2">
+						<p className="text-[11px] font-mono leading-relaxed text-muted-foreground">
+							New repositories start empty. After
+							creation, you can choose whether to add a
+							README, license, .gitignore, or other files
+							from the repository empty state.
+						</p>
 					</div>
 
 					{/* Error */}

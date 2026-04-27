@@ -11,6 +11,7 @@ import {
 	getUserEvents,
 	getUserFollowers,
 	getUserFollowing,
+	getUserStarredRepos,
 } from "@/lib/github";
 /** Session-scoped; must not be statically shared across GitHub users. */
 export const dynamic = "force-dynamic";
@@ -127,6 +128,7 @@ export default async function OwnerPage({ params }: { params: Promise<{ owner: s
 	let activityEvents: Awaited<ReturnType<typeof getUserEvents>> = [];
 	let followersData: Awaited<ReturnType<typeof getUserFollowers>> = [];
 	let followingData: Awaited<ReturnType<typeof getUserFollowing>> = [];
+	let starredRepos: Awaited<ReturnType<typeof getUserStarredRepos>> = [];
 
 	if (!isBot) {
 		try {
@@ -137,6 +139,7 @@ export default async function OwnerPage({ params }: { params: Promise<{ owner: s
 				eventsResult,
 				followersResult,
 				followingResult,
+				starredResult,
 			] = await Promise.allSettled([
 				getUserProfileRepositories(userData.login, 100),
 				getUserPublicOrgs(userData.login),
@@ -144,6 +147,7 @@ export default async function OwnerPage({ params }: { params: Promise<{ owner: s
 				getUserEvents(userData.login, 100),
 				getUserFollowers(userData.login, 100),
 				getUserFollowing(userData.login, 100),
+				getUserStarredRepos(userData.login, 100),
 			]);
 			if (reposResult.status === "fulfilled") reposData = reposResult.value;
 			if (orgsResult.status === "fulfilled") orgsData = orgsResult.value;
@@ -152,6 +156,8 @@ export default async function OwnerPage({ params }: { params: Promise<{ owner: s
 			}
 			if (eventsResult.status === "fulfilled")
 				activityEvents = eventsResult.value;
+			if (starredResult.status === "fulfilled")
+				starredRepos = starredResult.value;
 			if (followersResult.status === "fulfilled") {
 				followersData = followersResult.value;
 			}
@@ -218,6 +224,20 @@ export default async function OwnerPage({ params }: { params: Promise<{ owner: s
 				stargazers_count: r.stargazers_count,
 				forks_count: r.forks_count,
 				language: r.language,
+			}))}
+			starredRepos={starredRepos.map((repo) => ({
+				id: repo.id,
+				name: repo.name,
+				full_name: repo.full_name,
+				description: repo.description ?? null,
+				language: repo.language ?? null,
+				stargazers_count: repo.stargazers_count ?? 0,
+				forks_count: repo.forks_count ?? 0,
+				updated_at: repo.updated_at ?? null,
+				owner: {
+					login: repo.owner.login,
+					avatar_url: repo.owner.avatar_url,
+				},
 			}))}
 		/>
 	);

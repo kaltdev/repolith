@@ -595,18 +595,82 @@ export function UserProfileContent({
 		);
 	}, [following, search]);
 
+	const filteredStarred = useMemo(() => {
+		const query = search.trim().toLowerCase();
+		if (!query) return starredRepos;
+		return starredRepos.filter((repo) =>
+			[
+				repo.name,
+				repo.full_name,
+				repo.description ?? "",
+				repo.language ?? "",
+				repo.owner.login,
+			]
+				.join(" ")
+				.toLowerCase()
+				.includes(query),
+		);
+	}, [search, starredRepos]);
+
 	const activePeople = useMemo(() => {
 		if (tab === "followers") return filteredFollowers;
 		if (tab === "following") return filteredFollowing;
 		return [];
 	}, [filteredFollowers, filteredFollowing, tab]);
 
+	const isRepositoriesTab = tab === "repositories";
+	const isStarredTab = tab === "starred";
+	const isSocialTab = tab === "followers" || tab === "following";
+
 	const searchPlaceholder =
 		tab === "repositories"
 			? "Find a repository..."
+			: tab === "starred"
+				? "Find a starred repository..."
+				: tab === "followers"
+					? "Find a follower..."
+					: "Find a user...";
+
+	const visibleCountLabel = isRepositoriesTab
+		? `${filtered.length}/${repos.length}`
+		: isStarredTab
+			? `${filteredStarred.length}/${starredRepos.length}`
 			: tab === "followers"
-				? "Find a follower..."
-				: "Find a user...";
+				? `${filteredFollowers.length}/${followers.length}`
+				: `${filteredFollowing.length}/${following.length}`;
+
+	const profileTabs = [
+		{
+			key: "repositories" as const,
+			label: "Repositories",
+			compactLabel: "Repos",
+			count: repos.length,
+			icon: FolderGit2,
+		},
+		{
+			key: "starred" as const,
+			label: "Starred",
+			count: starredRepos.length,
+			icon: Star,
+		},
+		{
+			key: "followers" as const,
+			label: "Followers",
+			count: socialCounts.followers,
+			icon: Users,
+		},
+		{
+			key: "following" as const,
+			label: "Following",
+			count: socialCounts.following,
+			icon: Users,
+		},
+		{
+			key: "activity" as const,
+			label: "Activity",
+			icon: Activity,
+		},
+	];
 
 	const clearRepoFilters = useCallback(() => {
 		setSearch("");
@@ -1128,84 +1192,68 @@ export function UserProfileContent({
 
 				{/* Tab switcher */}
 				<div className="shrink-0 mb-4">
-					<div className="grid grid-cols-2 lg:grid-cols-4 border border-border divide-x divide-border divide-y lg:divide-y-0 w-full rounded-sm">
-						<button
-							onClick={() =>
-								handleTabChange("repositories")
-							}
-							className={cn(
-								"flex-1 lg:flex-none flex items-center justify-center gap-2 px-3 lg:px-4 py-2 text-[10px] sm:text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-l-sm lg:rounded-l-md",
-								tab === "repositories"
-									? "bg-muted/50 dark:bg-white/4 text-foreground"
-									: "text-muted-foreground hover:text-foreground/60 hover:bg-muted/60 dark:hover:bg-white/3",
-							)}
-						>
-							<FolderGit2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-							<span className="sm:hidden">Repos</span>
-							<span className="hidden sm:inline">
-								Repositories
-							</span>
-							<span className="text-muted-foreground/50 tabular-nums">
-								{repos.length}
-							</span>
-						</button>
-						<button
-							onClick={() => handleTabChange("starred")}
-							className={cn(
-								"flex-1 lg:flex-none flex items-center justify-center gap-2 px-3 lg:px-4 py-2 text-[10px] sm:text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer",
-								tab === "starred"
-									? "bg-muted/50 dark:bg-white/4 text-foreground"
-									: "text-muted-foreground hover:text-foreground/60 hover:bg-muted/60 dark:hover:bg-white/3",
-							)}
-						>
-							<Star className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-							Starred
-							<span className="text-muted-foreground/50 tabular-nums">
-								{starredRepos.length}
-							</span>
-						</button>
-						<button
-							onClick={() => handleTabChange("followers")}
-							className={cn(
-								"flex-1 flex items-center justify-center gap-2 px-4 py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer",
-								tab === "followers"
-									? "bg-muted/50 dark:bg-white/4 text-foreground"
-									: "text-muted-foreground hover:text-foreground/60 hover:bg-muted/60 dark:hover:bg-white/3",
-							)}
-						>
-							<Users className="w-3.5 h-3.5" />
-							Followers
-							<span className="text-muted-foreground/50 tabular-nums">
-								{socialCounts.followers}
-							</span>
-						</button>
-						<button
-							onClick={() => handleTabChange("following")}
-							className={cn(
-								"flex-1 flex items-center justify-center gap-2 px-4 py-2 text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer",
-								tab === "following"
-									? "bg-muted/50 dark:bg-white/4 text-foreground"
-									: "text-muted-foreground hover:text-foreground/60 hover:bg-muted/60 dark:hover:bg-white/3",
-							)}
-						>
-							<Users className="w-3.5 h-3.5" />
-							Following
-							<span className="text-muted-foreground/50 tabular-nums">
-								{socialCounts.following}
-							</span>
-						</button>
-						<button
-							onClick={() => handleTabChange("activity")}
-							className={cn(
-								"flex-1 lg:flex-none flex items-center justify-center gap-2 px-3 lg:px-4 py-2 text-[10px] sm:text-[11px] font-mono uppercase tracking-wider transition-colors cursor-pointer rounded-r-sm lg:rounded-r-md",
-								tab === "activity"
-									? "bg-muted/50 dark:bg-white/4 text-foreground"
-									: "text-muted-foreground hover:text-foreground/60 hover:bg-muted/60 dark:hover:bg-white/3",
-							)}
-						>
-							<Activity className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-							Activity
-						</button>
+					<div
+						role="tablist"
+						aria-label="Profile sections"
+						className="flex min-w-full gap-1 overflow-x-auto rounded-md border border-border bg-muted/20 p-1 lg:grid lg:grid-cols-5 lg:overflow-visible"
+					>
+						{profileTabs.map((item) => {
+							const Icon = item.icon;
+							const isActive = tab === item.key;
+
+							return (
+								<button
+									key={item.key}
+									id={`user-profile-tab-${item.key}`}
+									type="button"
+									role="tab"
+									aria-selected={isActive}
+									aria-controls={`user-profile-panel-${item.key}`}
+									onClick={() =>
+										handleTabChange(
+											item.key,
+										)
+									}
+									className={cn(
+										"flex min-w-max items-center justify-center gap-2 rounded-sm px-3 py-2 text-[10px] sm:text-[11px] font-mono uppercase tracking-[0.16em] whitespace-nowrap transition-all cursor-pointer lg:min-w-0",
+										isActive
+											? "bg-background text-foreground shadow-xs"
+											: "text-muted-foreground hover:bg-background/70 hover:text-foreground",
+									)}
+								>
+									<Icon className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+									{item.compactLabel ? (
+										<>
+											<span className="sm:hidden">
+												{
+													item.compactLabel
+												}
+											</span>
+											<span className="hidden sm:inline">
+												{
+													item.label
+												}
+											</span>
+										</>
+									) : (
+										item.label
+									)}
+									{item.count !==
+										undefined && (
+										<span
+											className={cn(
+												"rounded-full px-1.5 py-0.5 text-[10px] tabular-nums",
+												isActive
+													? "bg-muted text-foreground/70"
+													: "bg-muted/70 text-muted-foreground/60",
+											)}
+										>
+											{item.count}
+										</span>
+									)}
+								</button>
+							);
+						})}
 					</div>
 				</div>
 				{tab !== "activity" && (
@@ -1483,7 +1531,7 @@ export function UserProfileContent({
 													clearRepoFilters();
 												}
 											}}
-											aria-label="Clear repository filters"
+											aria-label="Clear active filters"
 											className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground font-mono transition-colors"
 										>
 											<X className="w-3 h-3" />
@@ -1491,13 +1539,7 @@ export function UserProfileContent({
 										</button>
 									)}
 									<span className="text-[11px] text-muted-foreground/30 font-mono tabular-nums">
-										{tab ===
-										"repositories"
-											? `${filtered.length}/${repos.length}`
-											: tab ===
-												  "followers"
-												? `${filteredFollowers.length}/${followers.length}`
-												: `${filteredFollowing.length}/${following.length}`}
+										{visibleCountLabel}
 									</span>
 								</div>
 							</div>
@@ -1520,7 +1562,7 @@ export function UserProfileContent({
 												clearRepoFilters();
 											}
 										}}
-										aria-label="Clear repository filters"
+										aria-label="Clear active filters"
 										className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground font-mono transition-colors"
 									>
 										<X className="w-3 h-3" />
@@ -1528,18 +1570,18 @@ export function UserProfileContent({
 									</button>
 								)}
 								<span className="text-[11px] text-muted-foreground/30 font-mono tabular-nums ml-auto">
-									{tab === "repositories"
-										? `${filtered.length}/${repos.length}`
-										: tab ===
-											  "followers"
-											? `${filteredFollowers.length}/${followers.length}`
-											: `${filteredFollowing.length}/${following.length}`}
+									{visibleCountLabel}
 								</span>
 							</div>
 						</div>
 
-						<div className="flex-1 min-h-[50dvh] lg:min-h-[70dvh] overflow-y-auto border border-border rounded-md divide-y divide-border">
-							{tab === "repositories" &&
+						<div
+							id={`user-profile-panel-${tab}`}
+							role="tabpanel"
+							aria-labelledby={`user-profile-tab-${tab}`}
+							className="flex-1 min-h-[50dvh] lg:min-h-[70dvh] overflow-y-auto border border-border rounded-md divide-y divide-border"
+						>
+							{isRepositoriesTab &&
 								filtered.map((repo) => (
 									<Link
 										key={repo.id}
@@ -1675,114 +1717,145 @@ export function UserProfileContent({
 									</Link>
 								))}
 
-							{tab === "starred" && (
-								<div className="flex-1 min-h-[50dvh] lg:min-h-0 overflow-y-auto border border-border rounded-md divide-y divide-border">
-									{starredRepos.map(
-										(repo) => (
-											<Link
-												key={
-													repo.id
-												}
-												href={`/${repo.full_name}`}
-												className="group flex items-center gap-4 px-4 py-3 hover:bg-muted/60 dark:hover:bg-white/3 transition-colors"
-											>
-												<Image
-													src={
-														repo
-															.owner
-															.avatar_url
-													}
-													alt={
-														repo
-															.owner
-															.login
-													}
-													width={
-														20
-													}
-													height={
-														20
-													}
-													className="rounded-md shrink-0"
-												/>
-												<div className="flex-1 min-w-0">
-													<div className="flex items-baseline gap-1 font-mono">
-														<span className="text-[11px] text-muted-foreground/50">
-															{
-																repo
-																	.owner
-																	.login
-															}
-														</span>
-														<span className="text-[11px] text-muted-foreground/30">
-															/
-														</span>
-														<span className="text-sm text-foreground truncate">
-															{
-																repo.name
-															}
-														</span>
-													</div>
-													{repo.description && (
-														<p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
-															{
-																repo.description
-															}
-														</p>
-													)}
-													<div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5">
-														{repo.language && (
-															<span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 font-mono">
-																<span
-																	className="w-2 h-2 rounded-full shrink-0"
-																	style={{
-																		backgroundColor:
-																			getLanguageColor(
-																				repo.language,
-																			),
-																	}}
-																/>
-																{
-																	repo.language
-																}
-															</span>
-														)}
-														<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-															<Star className="w-3 h-3" />
-															{formatNumber(
-																repo.stargazers_count,
-															)}
-														</span>
-														{repo.forks_count >
-															0 && (
-															<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
-																<GitFork className="w-3 h-3" />
-																{formatNumber(
-																	repo.forks_count,
-																)}
-															</span>
-														)}
-													</div>
+							{isStarredTab &&
+								filteredStarred.map((repo) => (
+									<Link
+										key={repo.id}
+										href={`/${repo.full_name}`}
+										className="group flex items-start md:items-center gap-3 md:gap-4 px-4 py-3 hover:bg-muted/60 dark:hover:bg-white/3 transition-colors"
+									>
+										<Image
+											src={
+												repo
+													.owner
+													.avatar_url
+											}
+											alt={
+												repo
+													.owner
+													.login
+											}
+											width={24}
+											height={24}
+											className="rounded-md shrink-0 ring-1 ring-border/60"
+										/>
+										<div className="flex-1 min-w-0">
+											<div className="flex flex-wrap items-center gap-2">
+												<div className="min-w-0 flex items-baseline gap-1 font-mono">
+													<span className="truncate text-[11px] text-muted-foreground/50">
+														{
+															repo
+																.owner
+																.login
+														}
+													</span>
+													<span className="text-[11px] text-muted-foreground/30">
+														/
+													</span>
+													<span className="truncate text-sm text-foreground">
+														{
+															repo.name
+														}
+													</span>
 												</div>
-												<ChevronRight className="w-3 h-3 text-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-											</Link>
-										),
-									)}
-									{starredRepos.length ===
-										0 && (
-										<div className="py-16 text-center">
-											<Star className="w-6 h-6 text-muted-foreground/20 mx-auto mb-3" />
-											<p className="text-xs text-muted-foreground/50 font-mono">
-												No
-												starred
-												repositories
-											</p>
+											</div>
+											{repo.description && (
+												<p className="mt-1 truncate text-[11px] text-muted-foreground/60 max-w-lg">
+													{
+														repo.description
+													}
+												</p>
+											)}
+											<div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 md:hidden">
+												{repo.language && (
+													<span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 font-mono">
+														<span
+															className="w-2 h-2 rounded-full"
+															style={{
+																backgroundColor:
+																	getLanguageColor(
+																		repo.language,
+																	),
+															}}
+														/>
+														{
+															repo.language
+														}
+													</span>
+												)}
+												<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+													<Star className="w-3 h-3" />
+													{formatNumber(
+														repo.stargazers_count,
+													)}
+												</span>
+												{repo.forks_count >
+													0 && (
+													<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+														<GitFork className="w-3 h-3" />
+														{formatNumber(
+															repo.forks_count,
+														)}
+													</span>
+												)}
+												{repo.updated_at && (
+													<span className="text-[11px] text-muted-foreground font-mono">
+														<TimeAgo
+															date={
+																repo.updated_at
+															}
+														/>
+													</span>
+												)}
+											</div>
 										</div>
-									)}
-								</div>
-							)}
+										<div className="hidden md:flex items-center flex-wrap md:flex-nowrap gap-x-3 gap-y-1 md:gap-4 shrink-0">
+											{repo.language && (
+												<span className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 font-mono">
+													<span
+														className="w-2 h-2 rounded-full"
+														style={{
+															backgroundColor:
+																getLanguageColor(
+																	repo.language,
+																),
+														}}
+													/>
+													{
+														repo.language
+													}
+												</span>
+											)}
+											<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+												<Star className="w-3 h-3" />
+												{formatNumber(
+													repo.stargazers_count,
+												)}
+											</span>
+											{repo.forks_count >
+												0 && (
+												<span className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+													<GitFork className="w-3 h-3" />
+													{formatNumber(
+														repo.forks_count,
+													)}
+												</span>
+											)}
+											{repo.updated_at && (
+												<span className="text-[11px] text-muted-foreground font-mono md:w-14 md:text-right md:ml-auto">
+													<TimeAgo
+														date={
+															repo.updated_at
+														}
+													/>
+												</span>
+											)}
+											<ChevronRight className="hidden md:block w-3 h-3 text-foreground/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+										</div>
+									</Link>
+								))}
 
-							{tab !== "repositories" &&
+							{isSocialTab &&
 								activePeople.map((person) => (
 									<Link
 										key={person.login}
@@ -1859,7 +1932,7 @@ export function UserProfileContent({
 									</Link>
 								))}
 
-							{tab === "repositories" &&
+							{isRepositoriesTab &&
 								filtered.length === 0 && (
 									<div className="py-16 text-center">
 										<FolderGit2 className="w-6 h-6 text-muted-foreground/20 mx-auto mb-3" />
@@ -1870,7 +1943,18 @@ export function UserProfileContent({
 										</p>
 									</div>
 								)}
-							{tab !== "repositories" &&
+							{isStarredTab &&
+								filteredStarred.length === 0 && (
+									<div className="py-16 text-center">
+										<Star className="w-6 h-6 text-muted-foreground/20 mx-auto mb-3" />
+										<p className="text-xs text-muted-foreground/50 font-mono">
+											No starred
+											repositories
+											found
+										</p>
+									</div>
+								)}
+							{isSocialTab &&
 								activePeople.length === 0 && (
 									<div className="py-16 text-center">
 										<Users className="w-6 h-6 text-muted-foreground/20 mx-auto mb-3" />
@@ -1886,7 +1970,12 @@ export function UserProfileContent({
 					</>
 				)}
 				{tab === "activity" && (
-					<div className="flex-1 min-h-[50dvh] lg:min-h-[70dvh] overflow-y-auto pb-4">
+					<div
+						id="user-profile-panel-activity"
+						role="tabpanel"
+						aria-labelledby="user-profile-tab-activity"
+						className="flex-1 min-h-[50dvh] lg:min-h-[70dvh] overflow-y-auto pb-4"
+					>
 						<UserProfileActivityTimelineBoundary>
 							<UserProfileActivityTimeline
 								events={activityEvents}

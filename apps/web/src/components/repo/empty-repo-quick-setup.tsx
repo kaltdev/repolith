@@ -1,5 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import {
 	BookOpen,
+	Check,
+	Copy,
 	ExternalLink,
 	FileCode2,
 	FilePlus2,
@@ -21,7 +26,7 @@ interface EmptyRepoQuickSetupProps {
 interface CommandSectionProps {
 	title: string;
 	description: string;
-	lines: string[];
+	value: string;
 }
 
 const RECOMMENDED_FILES = [
@@ -30,18 +35,98 @@ const RECOMMENDED_FILES = [
 	{ name: ".gitignore", icon: FileCode2 },
 ];
 
-function CommandSection({ title, description, lines }: CommandSectionProps) {
+const NEW_REPO_COMMANDS = `git init
+# add the files you want to publish
+git add .
+git commit -m "Initial commit"
+git branch -M main
+git remote add origin https://github.com/radityprtama/hello.git
+git push -u origin main`;
+
+function CopyButton({
+	value,
+	label,
+	className,
+}: {
+	value: string;
+	label: string;
+	className?: string;
+}) {
+	const [copied, setCopied] = useState(false);
+
+	function handleCopy() {
+		navigator.clipboard.writeText(value);
+		setCopied(true);
+		setTimeout(() => setCopied(false), 1500);
+	}
+
 	return (
-		<section className="rounded-md border border-border/60 bg-card/30">
-			<div className="border-b border-border/40 px-4 py-3">
-				<h3 className="text-sm font-medium text-foreground">{title}</h3>
-				<p className="mt-1 text-xs text-muted-foreground/80">
-					{description}
-				</p>
+		<button
+			type="button"
+			onClick={handleCopy}
+			className={cn(
+				"inline-flex h-7 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[11px] font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/60 hover:text-foreground",
+				className,
+			)}
+			aria-label={label}
+			title={label}
+		>
+			{copied ? (
+				<Check className="size-3.5 text-success" />
+			) : (
+				<Copy className="size-3.5" />
+			)}
+			<span>{copied ? "Copied" : "Copy"}</span>
+		</button>
+	);
+}
+
+function CloneUrlField({ label, value }: { label: string; value: string }) {
+	return (
+		<div>
+			<div className="mb-1.5 flex items-center gap-1.5">
+				<GitBranch className="size-3 text-muted-foreground/70" />
+				<span className="text-[10px] font-mono font-medium uppercase text-muted-foreground/70">
+					{label}
+				</span>
 			</div>
-			<pre className="overflow-x-auto px-4 py-3 text-[11px] leading-6">
-				<code className="font-mono text-muted-foreground">
-					{lines.join("\n")}
+			<div className="flex min-w-0 items-stretch overflow-hidden rounded-md border border-border bg-background shadow-xs">
+				<code className="min-w-0 flex-1 truncate px-3 py-2 text-xs font-mono text-foreground">
+					{value}
+				</code>
+				<div className="flex border-l border-border bg-muted/20">
+					<CopyButton
+						value={value}
+						label={`Copy ${label} clone URL`}
+						className="h-auto rounded-none border-0 bg-transparent px-3 shadow-none"
+					/>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function CommandSection({ title, description, value }: CommandSectionProps) {
+	return (
+		<section className="overflow-hidden rounded-md border border-border bg-card shadow-xs">
+			<div className="flex flex-col gap-3 border-b border-border bg-muted/20 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+				<div className="min-w-0">
+					<h3 className="text-sm font-semibold text-foreground">
+						{title}
+					</h3>
+					<p className="mt-1 text-xs leading-5 text-muted-foreground">
+						{description}
+					</p>
+				</div>
+				<CopyButton
+					value={value}
+					label={`Copy commands for ${title}`}
+					className="self-start"
+				/>
+			</div>
+			<pre className="overflow-x-auto bg-background px-4 py-3 text-xs leading-5">
+				<code className="whitespace-pre font-mono text-foreground">
+					{value}
 				</code>
 			</pre>
 		</section>
@@ -61,34 +146,24 @@ export function EmptyRepoQuickSetup({
 	const githubRepoUrl = `https://github.com/${owner}/${repo}`;
 	const encodedBranch = encodeURIComponent(branch);
 
-	const newRepoCommands = [
-		"git init",
-		"# add the files you want to publish",
-		"git add .",
-		'git commit -m "Initial commit"',
-		`git branch -M ${branch}`,
-		`git remote add origin ${httpsCloneUrl}`,
-		`git push -u origin ${branch}`,
-	];
-
 	const existingRepoCommands = [
 		`git remote add origin ${httpsCloneUrl}`,
 		`git branch -M ${branch}`,
 		`git push -u origin ${branch}`,
-	];
+	].join("\n");
 
 	return (
 		<div className={cn("flex flex-col gap-4 pb-4", className)}>
-			<section className="rounded-md border border-border bg-card/40">
-				<div className="flex flex-col gap-3 border-b border-border/50 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-					<div>
+			<section className="overflow-hidden rounded-md border border-border bg-card shadow-xs">
+				<div className="flex flex-col gap-3 border-b border-border bg-muted/20 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+					<div className="min-w-0">
 						<div className="flex items-center gap-2">
 							<Terminal className="size-4 text-muted-foreground" />
-							<h2 className="text-sm font-medium text-foreground">
+							<h2 className="text-sm font-semibold text-foreground">
 								Quick Setup
 							</h2>
 						</div>
-						<p className="mt-1 text-xs text-muted-foreground/80">
+						<p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
 							This repository is empty. No README,
 							license, or other starter files have been
 							created.
@@ -99,7 +174,7 @@ export function EmptyRepoQuickSetup({
 						data-no-github-intercept
 						target="_blank"
 						rel="noopener noreferrer"
-						className="inline-flex items-center gap-1.5 self-start rounded-md border border-border px-3 py-1.5 text-[11px] font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground sm:self-auto"
+						className="inline-flex h-8 shrink-0 items-center gap-1.5 self-start rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/60 hover:text-foreground sm:self-auto"
 					>
 						<ExternalLink className="size-3" />
 						View on GitHub
@@ -107,28 +182,8 @@ export function EmptyRepoQuickSetup({
 				</div>
 
 				<div className="grid gap-3 p-4 md:grid-cols-2">
-					<div className="rounded-md border border-border/60 bg-background/50 p-3">
-						<div className="mb-2 flex items-center gap-1.5">
-							<GitBranch className="size-3 text-muted-foreground/70" />
-							<span className="text-[10px] font-mono uppercase text-muted-foreground/70">
-								HTTPS
-							</span>
-						</div>
-						<code className="block break-all text-xs font-mono text-foreground">
-							{httpsCloneUrl}
-						</code>
-					</div>
-					<div className="rounded-md border border-border/60 bg-background/50 p-3">
-						<div className="mb-2 flex items-center gap-1.5">
-							<GitBranch className="size-3 text-muted-foreground/70" />
-							<span className="text-[10px] font-mono uppercase text-muted-foreground/70">
-								SSH
-							</span>
-						</div>
-						<code className="block break-all text-xs font-mono text-foreground">
-							{sshCloneUrl}
-						</code>
-					</div>
+					<CloneUrlField label="HTTPS" value={httpsCloneUrl} />
+					<CloneUrlField label="SSH" value={sshCloneUrl} />
 				</div>
 			</section>
 
@@ -136,22 +191,22 @@ export function EmptyRepoQuickSetup({
 				<CommandSection
 					title="Create a new repository from the command line"
 					description="Start locally, choose the files you want, then push the first commit."
-					lines={newRepoCommands}
+					value={NEW_REPO_COMMANDS}
 				/>
 				<CommandSection
 					title="Push an existing repository"
 					description="Connect an existing local repository to this remote."
-					lines={existingRepoCommands}
+					value={existingRepoCommands}
 				/>
 			</div>
 
-			<section className="rounded-md border border-border/60 p-4">
+			<section className="rounded-md border border-border bg-card p-4 shadow-xs">
 				<div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-					<div>
-						<h3 className="text-sm font-medium text-foreground">
+					<div className="min-w-0">
+						<h3 className="text-sm font-semibold text-foreground">
 							Optional next steps
 						</h3>
-						<p className="mt-1 max-w-2xl text-xs text-muted-foreground/80">
+						<p className="mt-1 max-w-2xl text-xs leading-5 text-muted-foreground">
 							Add only the files this project needs.
 							Common starting points are recommended here,
 							but nothing is generated automatically.
@@ -161,7 +216,7 @@ export function EmptyRepoQuickSetup({
 								({ name, icon: Icon }) => (
 									<span
 										key={name}
-										className="inline-flex items-center gap-1.5 rounded-md border border-border/60 px-2.5 py-1 text-[11px] font-mono text-muted-foreground"
+										className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2.5 text-[11px] font-mono text-muted-foreground shadow-xs"
 									>
 										<Icon className="size-3" />
 										{name}
@@ -177,7 +232,7 @@ export function EmptyRepoQuickSetup({
 								data-no-github-intercept
 								target="_blank"
 								rel="noopener noreferrer"
-								className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/60 hover:text-foreground"
 							>
 								<FilePlus2 className="size-3" />
 								Create a new file
@@ -187,14 +242,14 @@ export function EmptyRepoQuickSetup({
 								data-no-github-intercept
 								target="_blank"
 								rel="noopener noreferrer"
-								className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-[11px] font-mono text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+								className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-background px-3 text-xs font-medium text-muted-foreground shadow-xs transition-colors hover:bg-muted/60 hover:text-foreground"
 							>
 								<Upload className="size-3" />
 								Upload existing files
 							</a>
 						</div>
 					) : (
-						<p className="max-w-sm text-xs text-muted-foreground/70 lg:text-right">
+						<p className="max-w-sm text-xs leading-5 text-muted-foreground lg:text-right">
 							You can clone this repository. Pushing files
 							or initializing it requires write access.
 						</p>
@@ -202,7 +257,7 @@ export function EmptyRepoQuickSetup({
 				</div>
 			</section>
 
-			<p className="text-[11px] font-mono text-muted-foreground/60">
+			<p className="px-1 text-[11px] font-mono leading-5 text-muted-foreground/70">
 				Using SSH instead? Replace the HTTPS remote URL in the commands with{" "}
 				{sshCloneUrl}.
 			</p>

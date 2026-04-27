@@ -91,9 +91,14 @@ function CloneUrlField({ label, value }: { label: string; value: string }) {
 				</span>
 			</div>
 			<div className="flex min-w-0 items-stretch overflow-hidden rounded-md border border-border bg-background shadow-xs">
-				<code className="min-w-0 flex-1 truncate px-3 py-2 text-xs font-mono text-foreground">
-					{value}
-				</code>
+				<input
+					readOnly
+					type="text"
+					value={value}
+					aria-label={`${label} clone URL`}
+					className="min-w-0 flex-1 bg-background px-3 py-2 text-xs font-mono text-foreground outline-none"
+					onFocus={(event) => event.currentTarget.select()}
+				/>
 				<div className="flex border-l border-border bg-muted/20">
 					<CopyButton
 						value={value}

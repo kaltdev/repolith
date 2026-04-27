@@ -292,7 +292,10 @@ export function ReactionDisplay({
 }: ReactionDisplayProps) {
 	const [hoveredKey, setHoveredKey] = useState<string | null>(null);
 	const [reactionUsers, setReactionUsers] = useState<ReactionWithId[] | null>(null);
-	const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+	const [contextMenu, setContextMenu] = useState<{
+		x: number;
+		y: number;
+	} | null>(null);
 	const [showPicker, setShowPicker] = useState(false);
 	const [currentUser, setCurrentUser] = useState<{
 		login: string;
@@ -357,7 +360,14 @@ export function ReactionDisplay({
 
 	const getUsersForReaction = (key: string): ReactionWithId[] => {
 		if (!reactionUsers) return [];
-		return reactionUsers.filter((u) => u.content === key);
+		const seen = new Set<string>();
+		return reactionUsers.filter((user) => {
+			if (user.content !== key) return false;
+			const dedupeKey = `${user.login}:${user.content}`;
+			if (seen.has(dedupeKey)) return false;
+			seen.add(dedupeKey);
+			return true;
+		});
 	};
 
 	const currentUserReactions = new Set(
@@ -425,15 +435,28 @@ export function ReactionDisplay({
 						content,
 					);
 					if (result.success && result.reactionId) {
-						setReactionUsers((prev) => [
-							...(prev ?? []),
-							{
-								id: result.reactionId!,
-								login: currentUser.login,
-								avatar_url: currentUser.avatar_url,
-								content,
-							},
-						]);
+						setReactionUsers((prev) => {
+							const existing = prev ?? [];
+							if (
+								existing.some(
+									(u) =>
+										u.login ===
+											currentUser.login &&
+										u.content ===
+											content,
+								)
+							)
+								return existing;
+							return [
+								...existing,
+								{
+									id: result.reactionId!,
+									login: currentUser.login,
+									avatar_url: currentUser.avatar_url,
+									content,
+								},
+							];
+						});
 					} else {
 						setOptimisticReactions((prev) => ({
 							...prev,

@@ -11,26 +11,50 @@ import React, {
 } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { parseDiffPatch, type DiffLine, type DiffSegment } from "@/lib/github-utils";
+import {
+	parseDiffPatch,
+	parseHunkHeader,
+	type DiffLine,
+	type DiffSegment,
+} from "@/lib/github-utils";
 import type { SyntaxToken } from "@/lib/shiki";
 import { highlightDiffLinesClient } from "@/lib/shiki-client";
 import { useColorTheme } from "@/components/theme/theme-provider";
 import { cn } from "@/lib/utils";
 import { TimeAgo } from "@/components/ui/time-ago";
 import { GithubAvatar } from "@/components/shared/github-avatar";
+import { FileTypeIcon } from "@/components/shared/file-icon";
 import {
 	File,
+	ArrowRight,
+	ChevronLeft,
+	ChevronRight,
 	ChevronDown,
+	ChevronUp,
+	WrapText,
+	Columns2,
+	Plus,
+	X,
 	Loader2,
 	CornerDownLeft,
+	Eye,
+	EyeOff,
 	Code2,
+	CheckCircle2,
+	Circle,
 	MessageSquare,
 	UnfoldVertical,
+	FileCode,
 	Ghost,
 	GitCommitHorizontal,
-	EyeOff,
+	Search,
+	Pencil,
 } from "lucide-react";
-import { commitFileEditOnPR } from "@/app/(app)/repos/[owner]/[repo]/pulls/pr-actions";
+import {
+	commitFileEditOnPR,
+	resolveReviewThread,
+	unresolveReviewThread,
+} from "@/app/(app)/repos/[owner]/[repo]/pulls/pr-actions";
 import {
 	deletePRReviewDraftCommentAction,
 	savePRReviewWorkspacePreferencesAction,
@@ -39,10 +63,12 @@ import {
 	upsertPRReviewDraftCommentAction,
 } from "@/app/(app)/repos/[owner]/[repo]/pulls/review-workspace-actions";
 import { CommitDialog } from "@/components/shared/commit-dialog";
+import { ResizeHandle } from "@/components/ui/resize-handle";
 import { useGlobalChatOptional } from "@/components/shared/global-chat-provider";
 import { MarkdownEditor, type MarkdownEditorRef } from "@/components/shared/markdown-editor";
 import type { ReviewThread, CheckStatus } from "@/lib/github";
 import { ClientMarkdown } from "@/components/shared/client-markdown";
+import { ReactionDisplay, type Reactions } from "@/components/shared/reaction-display";
 import { CheckStatusBadge } from "@/components/pr/check-status-badge";
 import { useMutationEvents } from "@/components/shared/mutation-event-provider";
 import { UserTooltip } from "@/components/shared/user-tooltip";
@@ -58,14 +84,9 @@ import {
 	getPRReviewClientRangeContent,
 } from "@/lib/pr-review-fingerprints-client";
 import { buildPRReviewFileFingerprint } from "@/lib/pr-review-fingerprints";
-import type { PRReviewWorkspacePageData } from "@/lib/pr-review-types";
+import type { PRReviewDiffFile, PRReviewWorkspacePageData } from "@/lib/pr-review-types";
 import { DiffFileTree } from "./diff-file-tree";
 import { DiffTreeSettingsPopover } from "./diff-tree-settings";
-import { DiffViewport } from "./review/diff-viewport";
-import { SyntaxSegmentedContent } from "./review/diff-content";
-import { buildDiffViewportModel } from "./review/diff-viewport-model";
-import { FileReviewHeader } from "./review/file-review-header";
-import { PRReviewShell } from "./review/pr-review-shell";
 import {
 	applyPRReviewViewedFileAction,
 	buildPRReviewViewerPreferences,
@@ -75,13 +96,12 @@ import {
 import {
 	type AddContextCallback,
 	type PRDiffFile as DiffFile,
-	type PRReviewComment as ReviewComment,
+	type PRReviewComment as BaseReviewComment,
 	type PRReviewSummary as ReviewSummary,
 } from "./review/review-models";
-import { ReviewStateBadge } from "./review/review-state-badge";
-import { ReviewThreadList } from "./review/review-thread-list";
-import { parseSuggestionBlock } from "./review/suggestion-parser";
 import { SuggestionBlock } from "./review/suggestion-block";
+
+type ReviewComment = BaseReviewComment & { reactions?: Reactions };
 
 interface PRCommit {
 	sha: string;
@@ -153,20 +173,6 @@ function mapDraftCommentToReviewComment(
 		replyToCommentId: comment.replyToCommentId,
 		suggestions: comment.suggestions,
 	};
-}
-
-function isEditableKeyTarget(target: EventTarget | null): boolean {
-	if (!(target instanceof HTMLElement)) {
-		return false;
-	}
-
-	if (target.isContentEditable) {
-		return true;
-	}
-
-	return !!target.closest(
-		"input, textarea, select, [contenteditable='true'], [role='textbox']",
-	);
 }
 
 export function PRDiffViewer({
@@ -338,7 +344,7 @@ export function PRDiffViewer({
 		setActiveIndex((currentIndex) => Math.min(currentIndex, files.length - 1));
 	}, [files.length]);
 
-	const reviewFiles = useMemo(
+	const reviewFiles = useMemo<PRReviewDiffFile[]>(
 		() =>
 			files.map((file) => ({
 				filename: file.filename,
@@ -510,13 +516,6 @@ export function PRDiffViewer({
 		if (nextIndex !== undefined) setActiveIndex(nextIndex);
 	}, [visibleActiveIndex, visibleFileIndices]);
 
-	const handleSidebarResize = useCallback((clientX: number) => {
-		if (!containerRef.current) return;
-		const rect = containerRef.current.getBoundingClientRect();
-		const x = clientX - rect.left;
-		setSidebarWidth(Math.max(140, Math.min(600, x)));
-	}, []);
-
 	const canPersistWorkspaceState =
 		canPersistReviewWorkspace && owner != null && repo != null && pullNumber != null;
 	const canPersistWorkspacePreferences =
@@ -678,27 +677,41 @@ export function PRDiffViewer({
 	);
 
 	const toggleViewed = useCallback(
-		(filename: string) => updateViewedFiles([filename], !viewedFiles.has(filename)),
+		(filename: string) => {
+			updateViewedFiles([filename], !viewedFiles.has(filename));
+		},
 		[updateViewedFiles, viewedFiles],
 	);
 
 	const setFilesViewed = useCallback(
-		(filenames: string[], viewed: boolean) => updateViewedFiles(filenames, viewed),
+		(filenames: string[], viewed: boolean) => {
+			updateViewedFiles(filenames, viewed);
+		},
 		[updateViewedFiles],
 	);
 
+	const handleSidebarResize = useCallback((clientX: number) => {
+		if (!containerRef.current) return;
+		const rect = containerRef.current.getBoundingClientRect();
+		const x = clientX - rect.left;
+		setSidebarWidth(Math.max(140, Math.min(600, x)));
+	}, []);
+
 	return (
 		<div ref={containerRef} className="flex flex-1 min-h-0 min-w-0">
-			<PRReviewShell
-				sidebarCollapsed={sidebarCollapsed}
-				sidebarWidth={sidebarWidth}
-				isSidebarDragging={isDragging}
-				onSidebarResize={handleSidebarResize}
-				onSidebarDragStart={() => setIsDragging(true)}
-				onSidebarDragEnd={() => setIsDragging(false)}
-				onSidebarReset={() => setSidebarWidth(220)}
-				sidebar={
-					<>
+			{/* File sidebar */}
+			{!sidebarCollapsed && (
+				<>
+					<div
+						className="hidden lg:flex flex-col shrink-0 border-r border-border pr-2"
+						style={{
+							width: sidebarWidth,
+							transition: isDragging
+								? "none"
+								: "width 0.2s cubic-bezier(0.4,0,0.2,1)",
+						}}
+					>
+						{/* Sidebar header */}
 						<div className="shrink-0 flex items-center gap-2 px-3 py-2">
 							<span className="text-[11px] font-mono text-foreground font-medium">
 								{files.length} file
@@ -715,13 +728,6 @@ export function PRDiffViewer({
 									{viewedCount}/{files.length}
 								</span>
 							)}
-							{hiddenViewedCount > 0 &&
-								viewerPreferences.hideViewedFiles && (
-									<span className="text-[10px] font-mono text-muted-foreground/50">
-										{hiddenViewedCount}{" "}
-										hidden
-									</span>
-								)}
 							<div className="flex items-center gap-0.5 ml-auto">
 								<button
 									onClick={() =>
@@ -842,21 +848,30 @@ export function PRDiffViewer({
 								{workspaceError}
 							</div>
 						)}
-						<div
-							className={cn(
-								"shrink-0 h-1 mx-3 rounded-full overflow-hidden transition-all duration-300",
-								viewedCount === 0
-									? "bg-border/20"
-									: "bg-border/60",
-							)}
-						>
+						{hiddenViewedCount > 0 && (
+							<div className="shrink-0 px-3 pb-1 text-[10px] font-mono text-muted-foreground/60">
+								{hiddenViewedCount} viewed hidden
+							</div>
+						)}
+						{files.length > 0 && (
 							<div
-								className="h-full bg-success/70 transition-all duration-300 rounded-full"
-								style={{
-									width: `${files.length > 0 ? (viewedCount / files.length) * 100 : 0}%`,
-								}}
-							/>
-						</div>
+								className={cn(
+									"shrink-0 h-1 mx-3 rounded-full overflow-hidden transition-all duration-300",
+									viewedCount === 0
+										? "bg-border/20"
+										: "bg-border/60",
+								)}
+							>
+								<div
+									className="h-full bg-success/70 transition-all duration-300 rounded-full"
+									style={{
+										width: `${(viewedCount / files.length) * 100}%`,
+									}}
+								/>
+							</div>
+						)}
+
+						{/* Sidebar content */}
 						<div className="flex-1 overflow-y-auto overscroll-contain min-h-0">
 							{sidebarMode === "files" ? (
 								<DiffFileTree
@@ -920,12 +935,10 @@ export function PRDiffViewer({
 										reviewSummaries
 									}
 									onNavigateToFile={(
-										index,
+										i,
 										line,
 									) => {
-										setActiveIndex(
-											index,
-										);
+										setActiveIndex(i);
 										setScrollToLine(
 											line ??
 												null,
@@ -937,9 +950,22 @@ export function PRDiffViewer({
 								/>
 							)}
 						</div>
-					</>
-				}
-			>
+					</div>
+
+					{/* Sidebar resize handle */}
+					<div className="hidden lg:flex shrink-0">
+						<ResizeHandle
+							onResize={handleSidebarResize}
+							onDragStart={() => setIsDragging(true)}
+							onDragEnd={() => setIsDragging(false)}
+							onDoubleClick={() => setSidebarWidth(220)}
+						/>
+					</div>
+				</>
+			)}
+
+			{/* Single file diff view */}
+			<div className="flex-1 min-w-0 min-h-0 flex flex-col">
 				{currentFile && (
 					<SingleFileDiff
 						file={currentFile}
@@ -995,12 +1021,13 @@ export function PRDiffViewer({
 								currentFile.filename,
 							) || []
 						}
+						reviewFile={reviewFiles[activeIndex] ?? null}
 						canPersistReviewWorkspace={
 							canPersistReviewWorkspace
 						}
 					/>
 				)}
-			</PRReviewShell>
+			</div>
 		</div>
 	);
 }
@@ -1035,6 +1062,7 @@ function SingleFileDiff({
 	onAddContext,
 	participants,
 	draftReplies,
+	reviewFile,
 	canPersistReviewWorkspace,
 }: {
 	file: DiffFile;
@@ -1066,12 +1094,11 @@ function SingleFileDiff({
 	onAddContext?: AddContextCallback;
 	participants?: Array<{ login: string; avatar_url: string }>;
 	draftReplies: ReviewComment[];
+	reviewFile: PRReviewDiffFile | null;
 	canPersistReviewWorkspace: boolean;
 }) {
 	const { emit } = useMutationEvents();
-	const lines = useMemo(() => (file.patch ? parseDiffPatch(file.patch) : []), [file.patch]);
-	const diffViewportModel = useMemo(() => buildDiffViewportModel(lines), [lines]);
-	const hunkInfos = diffViewportModel.hunkInfos;
+	const lines = file.patch ? parseDiffPatch(file.patch) : [];
 	const diffContainerRef = useRef<HTMLDivElement>(null);
 	const onScrollCompleteRef = useRef(onScrollComplete);
 	onScrollCompleteRef.current = onScrollComplete;
@@ -1323,6 +1350,24 @@ function SingleFileDiff({
 		},
 		[closeDiffSearch, goToNextSearch, goToPrevSearch],
 	);
+
+	// Compute hunk info for expand context
+	const hunkInfos = lines.reduce<
+		{ index: number; newStart: number; newCount: number; endNewLine: number }[]
+	>((acc, line, i) => {
+		if (line.type === "header") {
+			const parsed = parseHunkHeader(line.content);
+			if (parsed) {
+				acc.push({
+					index: i,
+					newStart: parsed.newStart,
+					newCount: parsed.newCount,
+					endNewLine: parsed.newStart + parsed.newCount - 1,
+				});
+			}
+		}
+		return acc;
+	}, []);
 
 	const fetchFileContent = useCallback(
 		async (withHighlight = false): Promise<string[] | null> => {
@@ -1601,6 +1646,10 @@ function SingleFileDiff({
 		}
 	}, [showFullFile, fetchFileContent]);
 
+	const dir = file.filename.includes("/")
+		? file.filename.slice(0, file.filename.lastIndexOf("/") + 1)
+		: "";
+	const name = file.filename.slice(dir.length);
 	// Index comments by line number for quick lookup
 	const commentsByLine = new Map<string, ReviewComment[]>();
 	for (const c of fileComments) {
@@ -1721,6 +1770,13 @@ function SingleFileDiff({
 					}
 				: null;
 
+	// Build split rows for side-by-side view
+	// eslint-disable-next-line react-hooks/exhaustive-deps
+	const splitRows = useMemo(
+		() => (splitView ? buildSplitRows(lines) : []),
+		[splitView, file.patch],
+	);
+
 	const handleLineClick = (lineNum: number, side: "LEFT" | "RIGHT", shiftKey: boolean) => {
 		// If we're in a drag selection, ignore click — mouseup already handled it
 		if (selectingFromRef.current) return;
@@ -1770,186 +1826,6 @@ function SingleFileDiff({
 		}
 	};
 
-	const navigateToPrevChange = useCallback(
-		(allowFileFallback: boolean) => {
-			if (isEditing && editView === "edit" && editTextareaRef.current) {
-				const cursorPos = editTextareaRef.current.selectionStart;
-				const currentLine = editContent
-					.slice(0, cursorPos)
-					.split("\n").length;
-				const previous = [...prChangedLinesSorted]
-					.reverse()
-					.find((lineNumber) => lineNumber < currentLine);
-
-				if (previous === undefined && allowFileFallback) {
-					onPrev();
-					return;
-				}
-
-				const target =
-					previous ??
-					prChangedLinesSorted[prChangedLinesSorted.length - 1];
-				if (target !== undefined) {
-					const container =
-						editTextareaRef.current.closest(".overflow-auto");
-					const gutterLine = container?.querySelector(
-						`[data-edit-line="${target}"]`,
-					);
-					gutterLine?.scrollIntoView({
-						block: "center",
-						behavior: "smooth",
-					});
-					const editorLines = editContent.split("\n");
-					const position = editorLines
-						.slice(0, target - 1)
-						.reduce(
-							(sum, lineText) =>
-								sum + lineText.length + 1,
-							0,
-						);
-					editTextareaRef.current.focus();
-					editTextareaRef.current.setSelectionRange(
-						position,
-						position,
-					);
-				}
-				return;
-			}
-
-			if (!diffContainerRef.current) return;
-			const rows = Array.from(
-				diffContainerRef.current.querySelectorAll<HTMLElement>(
-					"tr.diff-add-row",
-				),
-			);
-			if (rows.length === 0) return;
-
-			const containerRect = diffContainerRef.current.getBoundingClientRect();
-			const centerY = containerRect.top + containerRect.height / 2;
-			let target: HTMLElement | null = null;
-
-			for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex--) {
-				if (rows[rowIndex].getBoundingClientRect().top < centerY - 10) {
-					target = rows[rowIndex];
-					break;
-				}
-			}
-
-			if (!target && allowFileFallback) {
-				onPrev();
-				return;
-			}
-
-			const resolvedTarget = target ?? rows[rows.length - 1];
-			resolvedTarget.scrollIntoView({
-				block: "center",
-				behavior: "smooth",
-			});
-			resolvedTarget.classList.add("!brightness-125");
-			setTimeout(() => resolvedTarget.classList.remove("!brightness-125"), 1000);
-		},
-		[editContent, editView, isEditing, onPrev, prChangedLinesSorted],
-	);
-
-	const navigateToNextChange = useCallback(
-		(allowFileFallback: boolean) => {
-			if (isEditing && editView === "edit" && editTextareaRef.current) {
-				const cursorPos = editTextareaRef.current.selectionStart;
-				const currentLine = editContent
-					.slice(0, cursorPos)
-					.split("\n").length;
-				const next = prChangedLinesSorted.find(
-					(lineNumber) => lineNumber > currentLine,
-				);
-
-				if (next === undefined && allowFileFallback) {
-					onNext();
-					return;
-				}
-
-				const target = next ?? prChangedLinesSorted[0];
-				if (target !== undefined) {
-					const container =
-						editTextareaRef.current.closest(".overflow-auto");
-					const gutterLine = container?.querySelector(
-						`[data-edit-line="${target}"]`,
-					);
-					gutterLine?.scrollIntoView({
-						block: "center",
-						behavior: "smooth",
-					});
-					const editorLines = editContent.split("\n");
-					const position = editorLines
-						.slice(0, target - 1)
-						.reduce(
-							(sum, lineText) =>
-								sum + lineText.length + 1,
-							0,
-						);
-					editTextareaRef.current.focus();
-					editTextareaRef.current.setSelectionRange(
-						position,
-						position,
-					);
-				}
-				return;
-			}
-
-			if (!diffContainerRef.current) return;
-			const rows = Array.from(
-				diffContainerRef.current.querySelectorAll<HTMLElement>(
-					"tr.diff-add-row",
-				),
-			);
-			if (rows.length === 0) return;
-
-			const containerRect = diffContainerRef.current.getBoundingClientRect();
-			const centerY = containerRect.top + containerRect.height / 2;
-			const target = rows.find(
-				(row) => row.getBoundingClientRect().top > centerY + 10,
-			);
-
-			if (!target && allowFileFallback) {
-				onNext();
-				return;
-			}
-
-			const resolvedTarget = target ?? rows[0];
-			resolvedTarget.scrollIntoView({
-				block: "center",
-				behavior: "smooth",
-			});
-			resolvedTarget.classList.add("!brightness-125");
-			setTimeout(() => resolvedTarget.classList.remove("!brightness-125"), 1000);
-		},
-		[editContent, editView, isEditing, onNext, prChangedLinesSorted],
-	);
-
-	useEffect(() => {
-		const handleKeyDown = (event: KeyboardEvent) => {
-			if (
-				event.defaultPrevented ||
-				event.metaKey ||
-				event.ctrlKey ||
-				event.altKey ||
-				isEditableKeyTarget(event.target)
-			) {
-				return;
-			}
-
-			if (event.key === "j") {
-				event.preventDefault();
-				navigateToNextChange(true);
-			} else if (event.key === "k") {
-				event.preventDefault();
-				navigateToPrevChange(true);
-			}
-		};
-
-		document.addEventListener("keydown", handleKeyDown);
-		return () => document.removeEventListener("keydown", handleKeyDown);
-	}, [navigateToNextChange, navigateToPrevChange]);
-
 	return (
 		<div
 			className="flex flex-col flex-1 min-h-0 min-w-0"
@@ -1960,65 +1836,652 @@ function SingleFileDiff({
 				isHoveringDiffRef.current = false;
 			}}
 		>
-			<FileReviewHeader
-				file={file}
-				sidebarCollapsed={sidebarCollapsed}
-				onToggleSidebar={onToggleSidebar}
-				viewed={viewed}
-				onToggleViewed={onToggleViewed}
-				disableViewedToggle={!canToggleViewed}
-				viewedToggleTitle={
-					canToggleViewed
-						? viewed
-							? "Mark as unreviewed"
-							: "Mark as reviewed"
-						: "Sign in to persist viewed state"
-				}
-				canWrite={canWrite}
-				headBranch={headBranch}
-				isEditing={isEditing}
-				editView={editView}
-				onEditViewChange={setEditView}
-				onCancelEdit={handleCancelEdit}
-				onSaveEdit={() => setCommitDialogOpen(true)}
-				onStartEdit={handleStartEdit}
-				isLoadingEdit={isLoadingEdit}
-				showFullFile={showFullFile}
-				isLoadingFullFile={isLoadingFullFile}
-				onToggleFullFile={handleToggleFullFile}
-				showChangeNavigation={
-					(isEditing || showFullFile) &&
-					prChangedLinesSorted.length > 0
-				}
-				onPrevChange={() => navigateToPrevChange(false)}
-				onNextChange={() => navigateToNextChange(false)}
-				disableChangeNavigation={isEditing && editView !== "edit"}
-				fileCommentCount={fileComments.length}
-				hideReviewComments={hideReviewComments}
-				onToggleHideReviewComments={() =>
-					setHideReviewComments((value) => !value)
-				}
-				splitView={splitView}
-				onToggleSplit={onToggleSplit}
-				wordWrap={wordWrap}
-				onToggleWrap={onToggleWrap}
-				index={index}
-				total={total}
-				onPrevFile={onPrev}
-				onNextFile={onNext}
-				searchOpen={searchOpen}
-				searchQuery={searchQuery}
-				searchMatchCount={searchMatches.length}
-				currentSearchIndex={currentSearchIdx}
-				searchInputRef={searchInputRef}
-				onSearchQueryChange={setSearchQuery}
-				onSearchKeyDown={handleDiffSearchKeyDown}
-				onPrevSearch={goToPrevSearch}
-				onNextSearch={goToNextSearch}
-				matchCase={matchCase}
-				onToggleMatchCase={() => setMatchCase(!matchCase)}
-				onCloseSearch={closeDiffSearch}
-			/>
+			{/* Sticky file header */}
+			<div className="shrink-0 sticky top-0 z-10 bg-card/95 backdrop-blur-sm border-b border-border overflow-hidden">
+				<div className="flex items-center gap-2 px-3 py-1.5 overflow-hidden">
+					{/* Sidebar collapse/expand toggle */}
+					<button
+						onClick={onToggleSidebar}
+						className="hidden lg:flex p-0.5 rounded transition-colors cursor-pointer shrink-0 text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60"
+						title={
+							sidebarCollapsed
+								? "Show sidebar"
+								: "Hide sidebar"
+						}
+					>
+						{sidebarCollapsed ? (
+							<ChevronRight className="w-3.5 h-3.5" />
+						) : (
+							<ChevronLeft className="w-3.5 h-3.5" />
+						)}
+					</button>
+
+					<FileTypeIcon
+						name={name}
+						type="file"
+						className="w-3.5 h-3.5 shrink-0"
+					/>
+
+					<span className="text-xs font-mono truncate flex-1 min-w-0">
+						{dir && (
+							<span className="text-muted-foreground/60">
+								{dir}
+							</span>
+						)}
+						<span className="text-foreground font-medium">
+							{name}
+						</span>
+						{file.previous_filename && (
+							<span className="text-muted-foreground/50 ml-2 inline-flex items-center gap-1">
+								<ArrowRight className="w-2.5 h-2.5 inline" />
+								<span className="line-through">
+									{file.previous_filename
+										.split("/")
+										.pop()}
+								</span>
+							</span>
+						)}
+					</span>
+
+					<span className="text-[11px] font-mono text-success tabular-nums shrink-0">
+						+{file.additions}
+					</span>
+					<span className="text-[11px] font-mono text-destructive tabular-nums shrink-0">
+						-{file.deletions}
+					</span>
+
+					{/* Viewed toggle */}
+					<button
+						onClick={(e) => {
+							e.stopPropagation();
+							onToggleViewed();
+						}}
+						disabled={!canToggleViewed}
+						className={cn(
+							"flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] transition-colors cursor-pointer shrink-0 ml-1",
+							viewed
+								? "bg-success/10 text-success"
+								: "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60",
+							!canToggleViewed &&
+								"opacity-40 cursor-not-allowed",
+						)}
+						title={
+							canToggleViewed
+								? viewed
+									? "Mark as unreviewed"
+									: "Mark as reviewed"
+								: "Sign in to persist file review state"
+						}
+					>
+						{viewed ? (
+							<Eye className="w-3 h-3" />
+						) : (
+							<EyeOff className="w-3 h-3" />
+						)}
+						{viewed ? "Viewed" : "Mark viewed"}
+					</button>
+
+					{/* Edit file inline */}
+					{canWrite &&
+						headBranch &&
+						file.status !== "removed" &&
+						file.filename &&
+						(isEditing ? (
+							<div className="flex items-center gap-1 shrink-0">
+								{/* Edit / Changes toggle */}
+								<div className="flex items-center bg-secondary/60 rounded overflow-hidden mr-1">
+									<button
+										onClick={() =>
+											setEditView(
+												"edit",
+											)
+										}
+										className={cn(
+											"px-2 py-0.5 text-[10px] font-mono transition-colors cursor-pointer",
+											editView ===
+												"edit"
+												? "bg-accent text-foreground"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										Edit
+									</button>
+									<button
+										onClick={() =>
+											setEditView(
+												"changes",
+											)
+										}
+										className={cn(
+											"px-2 py-0.5 text-[10px] font-mono transition-colors cursor-pointer",
+											editView ===
+												"changes"
+												? "bg-accent text-foreground"
+												: "text-muted-foreground hover:text-foreground",
+										)}
+									>
+										Changes
+									</button>
+								</div>
+								<button
+									onClick={handleCancelEdit}
+									className="px-2 py-0.5 rounded text-[10px] font-mono text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors cursor-pointer"
+								>
+									Cancel
+								</button>
+								<button
+									onClick={() =>
+										setCommitDialogOpen(
+											true,
+										)
+									}
+									className="px-2 py-0.5 rounded text-[10px] font-mono bg-foreground text-background hover:bg-foreground/90 transition-colors cursor-pointer"
+								>
+									Save
+								</button>
+							</div>
+						) : (
+							<button
+								onClick={handleStartEdit}
+								disabled={isLoadingEdit}
+								className="p-0.5 rounded transition-colors cursor-pointer shrink-0 text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60 disabled:opacity-40"
+								title="Edit file"
+							>
+								{isLoadingEdit ? (
+									<Loader2 className="w-3.5 h-3.5 animate-spin" />
+								) : (
+									<Pencil className="w-3.5 h-3.5" />
+								)}
+							</button>
+						))}
+
+					{/* Full file toggle */}
+					<button
+						onClick={handleToggleFullFile}
+						disabled={isLoadingFullFile}
+						className={cn(
+							"p-0.5 rounded transition-colors cursor-pointer shrink-0",
+							showFullFile
+								? "bg-accent text-foreground"
+								: "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60",
+							"disabled:opacity-40",
+						)}
+						title={
+							showFullFile
+								? "Show diff only"
+								: "Show full file"
+						}
+					>
+						{isLoadingFullFile ? (
+							<Loader2 className="w-3.5 h-3.5 animate-spin" />
+						) : (
+							<FileCode className="w-3.5 h-3.5" />
+						)}
+					</button>
+
+					{/* Prev/next PR change navigation — visible in edit mode or full file view */}
+					{(isEditing || showFullFile) &&
+						prChangedLinesSorted.length > 0 && (
+							<div className="flex items-center gap-0.5 shrink-0">
+								<span className="w-1.5 h-1.5 rounded-full bg-success/60 shrink-0" />
+								<button
+									disabled={
+										isEditing &&
+										editView !== "edit"
+									}
+									onClick={() => {
+										if (
+											isEditing &&
+											editView ===
+												"edit" &&
+											editTextareaRef.current
+										) {
+											const cursorPos =
+												editTextareaRef
+													.current
+													.selectionStart;
+											const currentLine =
+												editContent
+													.slice(
+														0,
+														cursorPos,
+													)
+													.split(
+														"\n",
+													).length;
+											const prev =
+												[
+													...prChangedLinesSorted,
+												]
+													.reverse()
+													.find(
+														(
+															l,
+														) =>
+															l <
+															currentLine,
+													);
+											const target =
+												prev ??
+												prChangedLinesSorted[
+													prChangedLinesSorted.length -
+														1
+												];
+											if (
+												target !==
+												undefined
+											) {
+												const container =
+													editTextareaRef.current.closest(
+														".overflow-auto",
+													);
+												const gutterLine =
+													container?.querySelector(
+														`[data-edit-line="${target}"]`,
+													);
+												gutterLine?.scrollIntoView(
+													{
+														block: "center",
+														behavior: "smooth",
+													},
+												);
+												const edLines =
+													editContent.split(
+														"\n",
+													);
+												const pos =
+													edLines
+														.slice(
+															0,
+															target -
+																1,
+														)
+														.reduce(
+															(
+																s,
+																l,
+															) =>
+																s +
+																l.length +
+																1,
+															0,
+														);
+												editTextareaRef.current.focus();
+												editTextareaRef.current.setSelectionRange(
+													pos,
+													pos,
+												);
+											}
+										} else if (
+											diffContainerRef.current
+										) {
+											const rows =
+												Array.from(
+													diffContainerRef.current.querySelectorAll<HTMLElement>(
+														"tr.diff-add-row",
+													),
+												);
+											if (
+												rows.length ===
+												0
+											)
+												return;
+											const containerRect =
+												diffContainerRef.current.getBoundingClientRect();
+											const centerY =
+												containerRect.top +
+												containerRect.height /
+													2;
+											// Find the row closest to but above center
+											let target =
+												rows[
+													rows.length -
+														1
+												];
+											for (
+												let ri =
+													rows.length -
+													1;
+												ri >=
+												0;
+												ri--
+											) {
+												if (
+													rows[
+														ri
+													].getBoundingClientRect()
+														.top <
+													centerY -
+														10
+												) {
+													target =
+														ri >
+														0
+															? rows[
+																	ri -
+																		1
+																]
+															: rows[
+																	rows.length -
+																		1
+																];
+													break;
+												}
+												target =
+													rows[
+														ri
+													];
+											}
+											target.scrollIntoView(
+												{
+													block: "center",
+													behavior: "smooth",
+												},
+											);
+											target.classList.add(
+												"!brightness-125",
+											);
+											setTimeout(
+												() =>
+													target.classList.remove(
+														"!brightness-125",
+													),
+												1000,
+											);
+										}
+									}}
+									className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent/60 transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+									title="Previous PR change"
+								>
+									<ChevronUp className="w-3 h-3" />
+								</button>
+								<button
+									disabled={
+										isEditing &&
+										editView !== "edit"
+									}
+									onClick={() => {
+										if (
+											isEditing &&
+											editView ===
+												"edit" &&
+											editTextareaRef.current
+										) {
+											const cursorPos =
+												editTextareaRef
+													.current
+													.selectionStart;
+											const currentLine =
+												editContent
+													.slice(
+														0,
+														cursorPos,
+													)
+													.split(
+														"\n",
+													).length;
+											const next =
+												prChangedLinesSorted.find(
+													(
+														l,
+													) =>
+														l >
+														currentLine,
+												);
+											const target =
+												next ??
+												prChangedLinesSorted[0];
+											if (
+												target !==
+												undefined
+											) {
+												const container =
+													editTextareaRef.current.closest(
+														".overflow-auto",
+													);
+												const gutterLine =
+													container?.querySelector(
+														`[data-edit-line="${target}"]`,
+													);
+												gutterLine?.scrollIntoView(
+													{
+														block: "center",
+														behavior: "smooth",
+													},
+												);
+												const edLines =
+													editContent.split(
+														"\n",
+													);
+												const pos =
+													edLines
+														.slice(
+															0,
+															target -
+																1,
+														)
+														.reduce(
+															(
+																s,
+																l,
+															) =>
+																s +
+																l.length +
+																1,
+															0,
+														);
+												editTextareaRef.current.focus();
+												editTextareaRef.current.setSelectionRange(
+													pos,
+													pos,
+												);
+											}
+										} else if (
+											diffContainerRef.current
+										) {
+											const rows =
+												Array.from(
+													diffContainerRef.current.querySelectorAll<HTMLElement>(
+														"tr.diff-add-row",
+													),
+												);
+											if (
+												rows.length ===
+												0
+											)
+												return;
+											const containerRect =
+												diffContainerRef.current.getBoundingClientRect();
+											const centerY =
+												containerRect.top +
+												containerRect.height /
+													2;
+											// Find the first row below center
+											let target =
+												rows[0];
+											for (const row of rows) {
+												if (
+													row.getBoundingClientRect()
+														.top >
+													centerY +
+														10
+												) {
+													target =
+														row;
+													break;
+												}
+											}
+											target.scrollIntoView(
+												{
+													block: "center",
+													behavior: "smooth",
+												},
+											);
+											target.classList.add(
+												"!brightness-125",
+											);
+											setTimeout(
+												() =>
+													target.classList.remove(
+														"!brightness-125",
+													),
+												1000,
+											);
+										}
+									}}
+									className="p-0.5 rounded text-muted-foreground/50 hover:text-foreground hover:bg-accent/60 transition-colors cursor-pointer disabled:opacity-30 disabled:pointer-events-none"
+									title="Next PR change"
+								>
+									<ChevronDown className="w-3 h-3" />
+								</button>
+							</div>
+						)}
+
+					{/* Hide review comments toggle */}
+					{fileComments.length > 0 && (
+						<button
+							onClick={() =>
+								setHideReviewComments((h) => !h)
+							}
+							className={cn(
+								"p-0.5 rounded transition-colors cursor-pointer shrink-0",
+								hideReviewComments
+									? "bg-accent text-foreground"
+									: "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60",
+							)}
+							title={
+								hideReviewComments
+									? "Show review comments"
+									: "Hide review comments"
+							}
+						>
+							<MessageSquare className="w-3.5 h-3.5" />
+						</button>
+					)}
+
+					{/* Split view toggle */}
+					<button
+						onClick={onToggleSplit}
+						className={cn(
+							"p-0.5 rounded transition-colors cursor-pointer shrink-0",
+							splitView
+								? "bg-accent text-foreground"
+								: "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60",
+						)}
+						title={splitView ? "Unified diff" : "Split diff"}
+					>
+						<Columns2 className="w-3.5 h-3.5" />
+					</button>
+
+					{/* Wrap toggle */}
+					<button
+						onClick={onToggleWrap}
+						className={cn(
+							"p-0.5 rounded transition-colors cursor-pointer shrink-0",
+							wordWrap
+								? "bg-accent text-foreground"
+								: "text-muted-foreground/60 hover:text-muted-foreground hover:bg-accent/60",
+						)}
+						title={
+							wordWrap
+								? "Disable word wrap"
+								: "Enable word wrap"
+						}
+					>
+						<WrapText className="w-3.5 h-3.5" />
+					</button>
+
+					{/* Prev / Next nav */}
+					<div className="flex items-center gap-0.5 shrink-0">
+						<button
+							onClick={onPrev}
+							disabled={index === 0}
+							className="p-0.5 rounded hover:bg-accent disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+						>
+							<ChevronLeft className="w-3.5 h-3.5" />
+						</button>
+						<span className="text-[10px] font-mono text-muted-foreground/60 tabular-nums min-w-[3ch] text-center">
+							{index + 1}/{total}
+						</span>
+						<button
+							onClick={onNext}
+							disabled={index === total - 1}
+							className="p-0.5 rounded hover:bg-accent disabled:opacity-20 disabled:cursor-not-allowed cursor-pointer transition-colors"
+						>
+							<ChevronRight className="w-3.5 h-3.5" />
+						</button>
+					</div>
+				</div>
+
+				{/* Inline search bar */}
+				{searchOpen && (
+					<div className="flex items-center gap-1.5 px-3 py-1.5 border-t border-border/50">
+						<Search className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+						<input
+							ref={searchInputRef}
+							type="text"
+							value={searchQuery}
+							onChange={(e) =>
+								setSearchQuery(e.target.value)
+							}
+							onKeyDown={handleDiffSearchKeyDown}
+							placeholder="Find in diff..."
+							className="flex-1 bg-transparent text-xs font-mono text-foreground placeholder:text-muted-foreground outline-none min-w-0"
+							autoFocus
+						/>
+						{searchQuery && (
+							<span className="text-[10px] font-mono text-muted-foreground/50 tabular-nums shrink-0">
+								{searchMatches.length > 0
+									? `${currentSearchIdx + 1} of ${searchMatches.length}`
+									: "No results"}
+							</span>
+						)}
+						<div className="flex items-center gap-0.5 shrink-0">
+							<button
+								onClick={goToPrevSearch}
+								disabled={
+									searchMatches.length === 0
+								}
+								className="p-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+								title="Previous match (Shift+Enter)"
+							>
+								<ChevronUp className="w-3.5 h-3.5" />
+							</button>
+							<button
+								onClick={goToNextSearch}
+								disabled={
+									searchMatches.length === 0
+								}
+								className="p-0.5 text-muted-foreground/50 hover:text-foreground disabled:opacity-30 transition-colors cursor-pointer"
+								title="Next match (Enter)"
+							>
+								<ChevronDown className="w-3.5 h-3.5" />
+							</button>
+							<button
+								onClick={() =>
+									setMatchCase(!matchCase)
+								}
+								className={cn(
+									"px-1 py-0.5 rounded text-[10px] font-mono font-bold transition-colors cursor-pointer",
+									matchCase
+										? "text-foreground bg-accent"
+										: "text-muted-foreground hover:text-foreground",
+								)}
+								title="Match case"
+							>
+								Aa
+							</button>
+							<button
+								onClick={closeDiffSearch}
+								className="p-0.5 text-muted-foreground/50 hover:text-foreground transition-colors cursor-pointer"
+								title="Close (Escape)"
+							>
+								<X className="w-3.5 h-3.5" />
+							</button>
+						</div>
+					</div>
+				)}
+			</div>
 
 			{/* Scrollable diff content */}
 			<div
@@ -2348,261 +2811,391 @@ function SingleFileDiff({
 						fullFileTokens={fullFileTokens}
 					/>
 				) : lines.length > 0 ? (
-					<DiffViewport
-						model={diffViewportModel}
-						splitView={splitView}
-						wordWrap={wordWrap}
-						canComment={canComment}
-						commentsByLine={commentsByLine}
-						commentRange={commentRange}
-						selectionRange={selectionRange}
-						fileHighlightData={fileHighlightData}
-						highlightLines={highlightLines}
-						expandedLines={expandedLines}
-						isLoadingExpand={isLoadingExpand}
-						onExpandHunk={handleExpandHunk}
-						onLineClick={handleLineClick}
-						onLineMouseDown={handleLineMouseDown}
-						onLineHover={handleLineHover}
-						selectedLinesContent={selectedLinesContent}
-						selectedCodeForAI={selectedCodeForAI}
-						hideComments={hideReviewComments}
-						renderInlineComment={(comment) => {
-							const commentId =
-								typeof comment.id === "number"
-									? comment.id
-									: Number.NaN;
-							const childDraftReplies = Number.isFinite(
-								commentId,
-							)
-								? draftRepliesByCommentId.get(
-										commentId,
-									) || []
-								: [];
-							const isEditingDraft =
-								comment.isDraft &&
-								editingDraftId ===
-									String(comment.id);
-							const isReplyFormOpen =
-								!comment.isDraft &&
-								Number.isFinite(commentId) &&
-								replyingToCommentId === commentId;
-
-							if (isEditingDraft) {
-								return (
-									<InlineCommentForm
-										owner={owner!}
-										repo={repo!}
-										pullNumber={
-											pullNumber!
-										}
-										headSha={headSha!}
-										baseSha={baseSha!}
-										reviewFile={{
-											filename: file.filename,
-											status: file.status,
-											additions: file.additions,
-											deletions: file.deletions,
-											patch: file.patch,
-											previousFilename:
-												file.previous_filename ??
-												null,
-										}}
-										filename={
-											file.filename
-										}
-										line={
-											comment.line ??
-											comment.original_line ??
-											1
-										}
-										side={
-											(comment.side ??
-												"RIGHT") as
-												| "LEFT"
-												| "RIGHT"
-										}
-										startLine={
-											comment.start_line ??
-											comment.line ??
-											comment.original_line ??
-											undefined
-										}
-										selectedLinesContent={
-											comment
-												.suggestions?.[0]
-												?.originalCode
-										}
-										onClose={() =>
-											setEditingDraftId(
-												null,
-											)
-										}
-										onAddContext={
-											onAddContext
-										}
-										participants={
-											participants
-										}
-										draftComment={
-											comment
-										}
-									/>
-								);
+					splitView ? (
+						<SplitDiffTable
+							lines={lines}
+							splitRows={splitRows}
+							wordWrap={wordWrap}
+							canComment={canComment}
+							commentsByLine={commentsByLine}
+							commentRange={commentRange}
+							selectionRange={selectionRange}
+							fileHighlightData={fileHighlightData}
+							highlightLines={highlightLines}
+							expandedLines={expandedLines}
+							hunkInfos={hunkInfos}
+							isLoadingExpand={isLoadingExpand}
+							onExpandHunk={handleExpandHunk}
+							onLineClick={handleLineClick}
+							onLineMouseDown={handleLineMouseDown}
+							onLineHover={handleLineHover}
+							onCloseComment={() => {
+								setCommentRange(null);
+								setSelectingFrom(null);
+								setHoverLine(null);
+							}}
+							commentStartLine={commentRange?.startLine}
+							selectedLinesContent={selectedLinesContent}
+							selectedCodeForAI={selectedCodeForAI}
+							owner={owner}
+							repo={repo}
+							pullNumber={pullNumber}
+							headSha={headSha}
+							headBranch={headBranch}
+							filename={file.filename}
+							canWrite={canWrite}
+							onAddContext={onAddContext}
+							participants={participants}
+							hideComments={hideReviewComments}
+							draftRepliesByCommentId={
+								draftRepliesByCommentId
 							}
+							editingDraftId={editingDraftId}
+							replyingToCommentId={replyingToCommentId}
+							onEditDraft={setEditingDraftId}
+							onDeleteDraft={() => {
+								setEditingDraftId(null);
+								setReplyingToCommentId(null);
+							}}
+							onStartReply={setReplyingToCommentId}
+							reviewFile={reviewFile}
+							baseSha={baseSha}
+							canPersistReviewWorkspace={
+								canPersistReviewWorkspace
+							}
+						/>
+					) : (
+						<table
+							className={cn(
+								"w-full border-collapse",
+								wordWrap && "table-fixed",
+							)}
+						>
+							{wordWrap && (
+								<colgroup>
+									<col className="w-[3px]" />
+									<col className="w-10" />
+									<col />
+								</colgroup>
+							)}
+							<tbody>
+								{lines.map((line, i) => {
+									const lineNum =
+										line.type ===
+											"add" ||
+										line.type ===
+											"context"
+											? line.newLineNumber
+											: line.type ===
+												  "remove"
+												? line.oldLineNumber
+												: undefined;
+									const side:
+										| "LEFT"
+										| "RIGHT" =
+										line.type ===
+										"remove"
+											? "LEFT"
+											: "RIGHT";
 
-							return (
-								<InlineCommentDisplay
-									comment={comment}
-									owner={owner}
-									repo={repo}
-									pullNumber={pullNumber}
-									headBranch={headBranch}
-									filename={file.filename}
-									canWrite={canWrite}
-									canPersistDrafts={
-										canPersistReviewWorkspace
-									}
-									onEditDraft={(draftId) =>
-										setEditingDraftId(
-											draftId,
-										)
-									}
-									onDeleteDraft={() => {
-										setEditingDraftId(
-											null,
-										);
-										setReplyingToCommentId(
-											null,
-										);
-									}}
-									onStartReply={() => {
+									// Find inline comments for this line
+									const inlineComments: ReviewComment[] =
+										[];
+									if (
+										lineNum !==
+											undefined &&
+										!hideReviewComments
+									) {
+										const rightComments =
+											commentsByLine.get(
+												`RIGHT-${lineNum}`,
+											) || [];
+										const leftComments =
+											commentsByLine.get(
+												`LEFT-${lineNum}`,
+											) || [];
 										if (
-											!Number.isFinite(
-												commentId,
-											)
-										)
-											return;
-										setReplyingToCommentId(
-											(
-												currentId,
-											) =>
-												currentId ===
-												commentId
-													? null
-													: commentId,
-										);
-									}}
-									draftReplies={
-										childDraftReplies
+											line.type ===
+											"remove"
+										) {
+											inlineComments.push(
+												...leftComments,
+											);
+										} else {
+											inlineComments.push(
+												...rightComments,
+											);
+										}
 									}
-									replyForm={
-										isReplyFormOpen ? (
-											<InlineCommentForm
-												owner={
-													owner!
+
+									// Show comment form at end of selected range
+									const isCommentFormOpen =
+										commentRange !==
+											null &&
+										lineNum !==
+											undefined &&
+										lineNum ===
+											commentRange.endLine &&
+										side ===
+											commentRange.side;
+
+									// Is this line in the selection highlight? (side-aware)
+									const isSelected =
+										selectionRange !==
+											null &&
+										lineNum !==
+											undefined &&
+										lineNum >=
+											selectionRange.start &&
+										lineNum <=
+											selectionRange.end &&
+										side ===
+											selectionRange.side;
+
+									// Compute syntax highlight key for this line
+									let syntaxTokens:
+										| SyntaxToken[]
+										| undefined;
+									if (
+										fileHighlightData &&
+										lineNum !==
+											undefined
+									) {
+										if (
+											line.type ===
+											"remove"
+										) {
+											syntaxTokens =
+												fileHighlightData[
+													`R-${line.oldLineNumber}`
+												];
+										} else if (
+											line.type ===
+											"add"
+										) {
+											syntaxTokens =
+												fileHighlightData[
+													`A-${line.newLineNumber}`
+												];
+										} else if (
+											line.type ===
+											"context"
+										) {
+											syntaxTokens =
+												fileHighlightData[
+													`C-${line.newLineNumber}`
+												];
+										}
+									}
+
+									// Render expanded context lines before hunk headers
+									const expandedContent =
+										line.type ===
+										"header"
+											? expandedLines.get(
+													i,
+												)
+											: undefined;
+
+									return (
+										<DiffLineRow
+											key={i}
+											diffIdx={i}
+											line={line}
+											wordWrap={
+												wordWrap
+											}
+											canComment={
+												canComment
+											}
+											inlineComments={
+												inlineComments
+											}
+											isCommentFormOpen={
+												isCommentFormOpen
+											}
+											isSelected={
+												isSelected
+											}
+											isHighlighted={
+												lineNum !==
+													undefined &&
+												!!highlightLines?.has(
+													lineNum,
+												)
+											}
+											syntaxTokens={
+												syntaxTokens
+											}
+											expandedContent={
+												expandedContent
+											}
+											expandStartLine={
+												expandedContent
+													? hunkInfos.find(
+															(
+																h,
+															) =>
+																h.index ===
+																i,
+														)
+														? (() => {
+																const prevHunk =
+																	hunkInfos
+																		.filter(
+																			(
+																				h,
+																			) =>
+																				h.index <
+																				i,
+																		)
+																		.pop();
+																return prevHunk
+																	? prevHunk.endNewLine +
+																			1
+																	: 1;
+															})()
+														: 1
+													: undefined
+											}
+											isExpandLoading={
+												isLoadingExpand ===
+												i
+											}
+											onExpandHunk={() =>
+												handleExpandHunk(
+													i,
+												)
+											}
+											onOpenComment={(
+												shiftKey,
+											) => {
+												if (
+													lineNum !==
+														undefined &&
+													line.type !==
+														"header"
+												) {
+													handleLineClick(
+														lineNum,
+														side,
+														shiftKey,
+													);
 												}
-												repo={
-													repo!
+											}}
+											onStartSelect={() => {
+												if (
+													lineNum !==
+														undefined &&
+													line.type !==
+														"header"
+												) {
+													handleLineMouseDown(
+														lineNum,
+														side,
+													);
 												}
-												pullNumber={
-													pullNumber!
-												}
-												headSha={
-													headSha!
-												}
-												baseSha={
-													baseSha!
-												}
-												reviewFile={{
-													filename: file.filename,
-													status: file.status,
-													additions: file.additions,
-													deletions: file.deletions,
-													patch: file.patch,
-													previousFilename:
-														file.previous_filename ??
-														null,
-												}}
-												filename={
-													file.filename
-												}
-												line={
-													comment.line ??
-													comment.original_line ??
-													1
-												}
-												side={
-													(comment.side ??
-														"RIGHT") as
-														| "LEFT"
-														| "RIGHT"
-												}
-												startLine={
-													comment.start_line ??
-													comment.line ??
-													comment.original_line ??
+											}}
+											onHoverLine={() => {
+												if (
+													lineNum !==
 													undefined
+												) {
+													handleLineHover(
+														lineNum,
+													);
 												}
-												onClose={() =>
-													setReplyingToCommentId(
-														null,
-													)
-												}
-												onAddContext={
-													onAddContext
-												}
-												participants={
-													participants
-												}
-												replyToCommentId={
-													commentId
-												}
-											/>
-										) : null
-									}
-								/>
-							);
-						}}
-						renderCommentForm={({
-							line,
-							side,
-							startLine,
-							selectedLinesContent: content,
-							selectedCodeForAI: codeForAI,
-						}) => (
-							<InlineCommentForm
-								owner={owner!}
-								repo={repo!}
-								pullNumber={pullNumber!}
-								headSha={headSha!}
-								baseSha={baseSha!}
-								reviewFile={{
-									filename: file.filename,
-									status: file.status,
-									additions: file.additions,
-									deletions: file.deletions,
-									patch: file.patch,
-									previousFilename:
-										file.previous_filename ??
-										null,
-								}}
-								filename={file.filename}
-								line={line}
-								side={side}
-								startLine={startLine}
-								selectedLinesContent={content}
-								selectedCodeForAI={codeForAI}
-								onClose={() => {
-									setCommentRange(null);
-									setSelectingFrom(null);
-									setHoverLine(null);
-								}}
-								onAddContext={onAddContext}
-								participants={participants}
-							/>
-						)}
-					/>
+											}}
+											onCloseComment={() => {
+												setCommentRange(
+													null,
+												);
+												setSelectingFrom(
+													null,
+												);
+												setHoverLine(
+													null,
+												);
+											}}
+											commentStartLine={
+												isCommentFormOpen
+													? commentRange!
+															.startLine
+													: undefined
+											}
+											selectedLinesContent={
+												isCommentFormOpen
+													? selectedLinesContent
+													: undefined
+											}
+											selectedCodeForAI={
+												isCommentFormOpen
+													? selectedCodeForAI
+													: undefined
+											}
+											owner={
+												owner
+											}
+											repo={repo}
+											pullNumber={
+												pullNumber
+											}
+											headSha={
+												headSha
+											}
+											headBranch={
+												headBranch
+											}
+											filename={
+												file.filename
+											}
+											canWrite={
+												canWrite
+											}
+											onAddContext={
+												onAddContext
+											}
+											participants={
+												participants
+											}
+											draftRepliesByCommentId={
+												draftRepliesByCommentId
+											}
+											editingDraftId={
+												editingDraftId
+											}
+											replyingToCommentId={
+												replyingToCommentId
+											}
+											onEditDraft={
+												setEditingDraftId
+											}
+											onDeleteDraft={() => {
+												setEditingDraftId(
+													null,
+												);
+												setReplyingToCommentId(
+													null,
+												);
+											}}
+											onStartReply={
+												setReplyingToCommentId
+											}
+											reviewFile={
+												reviewFile
+											}
+											baseSha={
+												baseSha
+											}
+											canPersistReviewWorkspace={
+												canPersistReviewWorkspace
+											}
+										/>
+									);
+								})}
+							</tbody>
+						</table>
+					)
 				) : (
 					<div className="px-4 py-16 text-center">
 						<File className="w-5 h-5 text-muted-foreground/30 mx-auto mb-2" />
@@ -2631,13 +3224,482 @@ function SingleFileDiff({
 	);
 }
 
+function DiffLineRow({
+	line,
+	diffIdx,
+	wordWrap,
+	canComment,
+	inlineComments,
+	isCommentFormOpen,
+	isSelected,
+	isHighlighted,
+	syntaxTokens,
+	expandedContent,
+	expandStartLine,
+	isExpandLoading,
+	onExpandHunk,
+	onOpenComment,
+	onStartSelect,
+	onHoverLine,
+	onCloseComment,
+	commentStartLine,
+	selectedLinesContent,
+	selectedCodeForAI,
+	owner,
+	repo,
+	pullNumber,
+	headSha,
+	headBranch,
+	filename,
+	canWrite = true,
+	onAddContext,
+	participants,
+	draftRepliesByCommentId,
+	editingDraftId,
+	replyingToCommentId,
+	onEditDraft,
+	onDeleteDraft,
+	onStartReply,
+	reviewFile,
+	baseSha,
+	canPersistReviewWorkspace,
+}: {
+	line: DiffLine;
+	diffIdx: number;
+	wordWrap: boolean;
+	canComment: boolean;
+	inlineComments: ReviewComment[];
+	isCommentFormOpen: boolean;
+	isSelected?: boolean;
+	isHighlighted?: boolean;
+	syntaxTokens?: SyntaxToken[];
+	expandedContent?: string[];
+	expandStartLine?: number;
+	isExpandLoading?: boolean;
+	onExpandHunk?: () => void;
+	onOpenComment: (shiftKey: boolean) => void;
+	onStartSelect?: () => void;
+	onHoverLine?: () => void;
+	onCloseComment: () => void;
+	commentStartLine?: number;
+	selectedLinesContent?: string;
+	selectedCodeForAI?: string;
+	owner?: string;
+	repo?: string;
+	pullNumber?: number;
+	headSha?: string;
+	headBranch?: string;
+	filename: string;
+	canWrite?: boolean;
+	onAddContext?: AddContextCallback;
+	participants?: Array<{ login: string; avatar_url: string }>;
+	draftRepliesByCommentId: Map<number, ReviewComment[]>;
+	editingDraftId: string | null;
+	replyingToCommentId: number | null;
+	onEditDraft: (draftId: string | null) => void;
+	onDeleteDraft: () => void;
+	onStartReply: (commentId: number | null) => void;
+	reviewFile: PRReviewDiffFile | null;
+	baseSha?: string;
+	canPersistReviewWorkspace: boolean;
+}) {
+	if (line.type === "header") {
+		const funcMatch = line.content.match(/@@ .+? @@\s*(.*)/);
+		const funcName = funcMatch?.[1];
+		return (
+			<>
+				{/* Expanded context lines above this hunk */}
+				{expandedContent &&
+					expandedContent.length > 0 &&
+					expandedContent.map((text, ei) => (
+						<tr
+							key={`exp-${ei}`}
+							className="diff-expanded-context"
+						>
+							<td className="w-[3px] p-0 sticky left-0 z-[1]" />
+							<td className="w-10 py-0 pr-2 text-right text-[11px] font-mono text-muted-foreground/25 select-none border-r border-border/40 sticky left-[3px] z-[1]">
+								{(expandStartLine ?? 1) + ei}
+							</td>
+							<td
+								className={cn(
+									"py-0 font-mono text-[12.5px] leading-[20px]",
+									wordWrap
+										? "whitespace-pre-wrap break-words"
+										: "whitespace-pre",
+								)}
+							>
+								<div className="flex">
+									<span className="inline-block w-5 text-center shrink-0 select-none text-transparent">
+										{" "}
+									</span>
+									<span className="pl-1 text-muted-foreground/60">
+										{text}
+									</span>
+								</div>
+							</td>
+						</tr>
+					))}
+				<tr className="diff-hunk-header">
+					<td className="w-[3px] p-0 sticky left-0 z-[1]" />
+					<td className="w-10 py-1.5 pr-2 text-right text-[11px] font-mono text-info/40 select-none bg-info/[0.04] dark:bg-info/[0.06] border-r border-border/60 sticky left-[3px] z-[1]">
+						{onExpandHunk && !expandedContent ? (
+							<button
+								onClick={onExpandHunk}
+								disabled={isExpandLoading}
+								className="w-full flex items-center justify-center cursor-pointer hover:text-info/70 transition-colors disabled:opacity-40"
+								title="Expand context"
+							>
+								{isExpandLoading ? (
+									<Loader2 className="w-3.5 h-3.5 animate-spin" />
+								) : (
+									<UnfoldVertical className="w-3.5 h-3.5" />
+								)}
+							</button>
+						) : (
+							"..."
+						)}
+					</td>
+					<td className="py-1.5 px-3 text-[11px] font-mono bg-info/[0.04] dark:bg-info/[0.06]">
+						<span className="text-info/60 dark:text-info/50">
+							{line.content.match(/@@ .+? @@/)?.[0]}
+						</span>
+						{funcName && (
+							<span className="text-muted-foreground/50 ml-2">
+								{funcName}
+							</span>
+						)}
+					</td>
+				</tr>
+			</>
+		);
+	}
+
+	const isAdd = line.type === "add";
+	const isDel = line.type === "remove";
+	const lineNum = isAdd ? line.newLineNumber : line.oldLineNumber;
+	const side: "LEFT" | "RIGHT" = isDel ? "LEFT" : "RIGHT";
+
+	return (
+		<>
+			<tr
+				data-line={lineNum}
+				data-diff-idx={diffIdx}
+				onMouseEnter={onHoverLine}
+				className={cn(
+					"group/line hover:brightness-95 dark:hover:brightness-110 transition-[filter] duration-75",
+					isAdd && "diff-add-row",
+					isDel && "diff-del-row",
+					isSelected && "!bg-muted-foreground/[0.08]",
+					isHighlighted && "!bg-warning/10",
+				)}
+			>
+				{/* Gutter bar */}
+				<td
+					className={cn(
+						"w-[3px] p-0 sticky left-0 z-[1]",
+						isSelected
+							? "bg-muted-foreground"
+							: isAdd
+								? "bg-success"
+								: isDel
+									? "bg-destructive"
+									: "",
+					)}
+				/>
+
+				{/* Line number */}
+				<td
+					className={cn(
+						"w-10 py-0 pr-2 text-right text-[11px] font-mono select-none border-r border-border/40 sticky left-[3px] z-[1] relative",
+						isSelected
+							? "bg-muted-foreground/[0.06] text-muted-foreground"
+							: isAdd
+								? "bg-diff-add-gutter text-diff-add-gutter"
+								: isDel
+									? "bg-diff-del-gutter text-diff-del-gutter"
+									: "text-muted-foreground/30",
+					)}
+				>
+					{canComment && lineNum !== undefined && (
+						<button
+							onMouseDown={(e) => {
+								e.preventDefault();
+								onStartSelect?.();
+							}}
+							onClick={(e) => onOpenComment(e.shiftKey)}
+							className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover/line:opacity-100 transition-opacity text-foreground/50 hover:text-foreground/70 cursor-pointer"
+							title="Add review comment (shift+click for range)"
+						>
+							<Plus className="w-3 h-3" />
+						</button>
+					)}
+					{(isAdd ? line.newLineNumber : line.oldLineNumber) ?? ""}
+				</td>
+
+				{/* Content */}
+				<td
+					className={cn(
+						"py-0 font-mono text-[12.5px] leading-[20px]",
+						wordWrap
+							? "whitespace-pre-wrap break-words"
+							: "whitespace-pre",
+						isAdd && "bg-diff-add-bg",
+						isDel && "bg-diff-del-bg",
+					)}
+				>
+					<div className="flex">
+						<span
+							className={cn(
+								"inline-block w-5 text-center shrink-0 select-none",
+								isAdd
+									? "text-success/50"
+									: isDel
+										? "text-destructive/50"
+										: "text-transparent",
+							)}
+						>
+							{isAdd ? "+" : isDel ? "-" : " "}
+						</span>
+						<span className="pl-1">
+							{syntaxTokens ? (
+								line.segments ? (
+									<SyntaxSegmentedContent
+										segments={
+											line.segments
+										}
+										tokens={
+											syntaxTokens
+										}
+										type={line.type}
+									/>
+								) : (
+									<span className="diff-syntax">
+										{syntaxTokens.map(
+											(t, ti) => (
+												<span
+													key={
+														ti
+													}
+													style={{
+														color: `light-dark(${t.lightColor}, ${t.darkColor})`,
+													}}
+												>
+													{
+														t.text
+													}
+												</span>
+											),
+										)}
+									</span>
+								)
+							) : line.segments ? (
+								<SegmentedContent
+									segments={line.segments}
+									type={line.type}
+								/>
+							) : (
+								<span
+									className={cn(
+										isAdd &&
+											"text-diff-add-text",
+										isDel &&
+											"text-diff-del-text",
+									)}
+								>
+									{line.content}
+								</span>
+							)}
+						</span>
+					</div>
+				</td>
+			</tr>
+
+			{/* Existing inline review comments */}
+			{inlineComments.map((comment) => {
+				const commentId = Number(comment.id);
+				const childDraftReplies = Number.isFinite(commentId)
+					? draftRepliesByCommentId.get(commentId) || []
+					: [];
+				const isEditingDraft =
+					comment.isDraft && editingDraftId === String(comment.id);
+				const isReplyFormOpen =
+					!comment.isDraft &&
+					Number.isFinite(commentId) &&
+					replyingToCommentId === commentId;
+
+				return (
+					<tr key={`rc-${comment.id}`}>
+						<td colSpan={3} className="p-0">
+							{isEditingDraft ? (
+								<InlineCommentForm
+									owner={owner!}
+									repo={repo!}
+									pullNumber={pullNumber!}
+									headSha={headSha!}
+									baseSha={baseSha}
+									headBranch={headBranch}
+									filename={filename}
+									line={
+										comment.line ??
+										lineNum ??
+										0
+									}
+									side={
+										(comment.side as
+											| "LEFT"
+											| "RIGHT") ??
+										side
+									}
+									startLine={
+										comment.start_line ??
+										undefined
+									}
+									selectedLinesContent={
+										selectedLinesContent
+									}
+									selectedCodeForAI={
+										selectedCodeForAI
+									}
+									onClose={() =>
+										onEditDraft(null)
+									}
+									onAddContext={onAddContext}
+									participants={participants}
+									draftComment={comment}
+									reviewFile={reviewFile}
+								/>
+							) : (
+								<InlineCommentDisplay
+									comment={comment}
+									owner={owner}
+									repo={repo}
+									pullNumber={pullNumber}
+									headBranch={headBranch}
+									filename={filename}
+									canWrite={canWrite}
+									canPersistDrafts={
+										canPersistReviewWorkspace
+									}
+									onEditDraft={onEditDraft}
+									onDeleteDraft={
+										onDeleteDraft
+									}
+									onStartReply={() => {
+										if (
+											!Number.isFinite(
+												commentId,
+											)
+										)
+											return;
+										onStartReply(
+											isReplyFormOpen
+												? null
+												: commentId,
+										);
+									}}
+									draftReplies={
+										childDraftReplies
+									}
+									replyForm={
+										isReplyFormOpen ? (
+											<InlineCommentForm
+												owner={
+													owner!
+												}
+												repo={
+													repo!
+												}
+												pullNumber={
+													pullNumber!
+												}
+												headSha={
+													headSha!
+												}
+												baseSha={
+													baseSha
+												}
+												headBranch={
+													headBranch
+												}
+												filename={
+													filename
+												}
+												line={
+													comment.line ??
+													lineNum ??
+													0
+												}
+												side={
+													(comment.side as
+														| "LEFT"
+														| "RIGHT") ??
+													side
+												}
+												startLine={
+													undefined
+												}
+												onClose={() =>
+													onStartReply(
+														null,
+													)
+												}
+												onAddContext={
+													onAddContext
+												}
+												participants={
+													participants
+												}
+												replyToCommentId={
+													commentId
+												}
+												reviewFile={
+													reviewFile
+												}
+											/>
+										) : null
+									}
+								/>
+							)}
+						</td>
+					</tr>
+				);
+			})}
+
+			{/* Inline comment form */}
+			{isCommentFormOpen && lineNum !== undefined && (
+				<tr>
+					<td colSpan={3} className="p-0">
+						<InlineCommentForm
+							owner={owner!}
+							repo={repo!}
+							pullNumber={pullNumber!}
+							headSha={headSha!}
+							baseSha={baseSha}
+							headBranch={headBranch}
+							filename={filename}
+							line={lineNum}
+							side={side}
+							startLine={commentStartLine}
+							selectedLinesContent={selectedLinesContent}
+							selectedCodeForAI={selectedCodeForAI}
+							onClose={onCloseComment}
+							onAddContext={onAddContext}
+							participants={participants}
+							reviewFile={reviewFile}
+						/>
+					</td>
+				</tr>
+			)}
+		</>
+	);
+}
+
 export function InlineCommentForm({
 	owner,
 	repo,
 	pullNumber,
 	headSha,
 	baseSha,
-	reviewFile,
 	filename,
 	line,
 	side,
@@ -2649,20 +3711,14 @@ export function InlineCommentForm({
 	participants,
 	draftComment,
 	replyToCommentId,
+	reviewFile,
 }: {
 	owner: string;
 	repo: string;
 	pullNumber: number;
 	headSha: string;
 	baseSha?: string;
-	reviewFile?: {
-		filename: string;
-		status: string;
-		additions: number;
-		deletions: number;
-		patch?: string;
-		previousFilename?: string | null;
-	};
+	headBranch?: string;
 	filename: string;
 	line: number;
 	side: "LEFT" | "RIGHT";
@@ -2674,6 +3730,7 @@ export function InlineCommentForm({
 	participants?: Array<{ login: string; avatar_url: string }>;
 	draftComment?: ReviewComment;
 	replyToCommentId?: number;
+	reviewFile?: PRReviewDiffFile | null;
 }) {
 	const router = useRouter();
 	const [body, setBody] = useState(draftComment?.body ?? "");
@@ -2686,24 +3743,8 @@ export function InlineCommentForm({
 
 	const isMultiLine = startLine !== undefined && startLine !== line;
 
-	useEffect(() => {
-		setBody(draftComment?.body ?? "");
-		setError(null);
-	}, [draftComment?.body, draftComment?.id]);
-
 	const handleInsertSuggestion = () => {
-		const suggestionSeed =
-			selectedLinesContent ??
-			draftComment?.suggestions?.[0]?.originalCode ??
-			(reviewFile
-				? (getPRReviewClientRangeContent(
-						reviewFile,
-						effectiveStartLine,
-						line,
-						side,
-					) ?? "")
-				: "");
-		const suggestion = `\`\`\`suggestion\n${suggestionSeed}\n\`\`\``;
+		const suggestion = `\`\`\`suggestion\n${selectedLinesContent || ""}\n\`\`\``;
 		if (!body) {
 			setBody(suggestion);
 		} else {
@@ -2826,27 +3867,11 @@ export function InlineCommentForm({
 
 	return (
 		<div className="mx-3 my-1.5 max-w-xl rounded-lg border border-border bg-background overflow-hidden shadow-sm">
-			{(isMultiLine || isReply || isEditingDraft) && (
+			{isMultiLine && (
 				<div className="px-3 py-1 bg-muted/20 border-b border-border/40">
-					{isMultiLine ? (
-						<span className="text-[10px] font-mono text-muted-foreground/60">
-							Lines {startLine}–{line}
-						</span>
-					) : (
-						<span className="text-[10px] font-mono text-muted-foreground/60">
-							Line {line}
-						</span>
-					)}
-					{isReply && (
-						<span className="ml-2 text-[10px] font-mono text-info/70">
-							Draft reply
-						</span>
-					)}
-					{isEditingDraft && !isReply && (
-						<span className="ml-2 text-[10px] font-mono text-muted-foreground/60">
-							Editing draft
-						</span>
-					)}
+					<span className="text-[10px] font-mono text-muted-foreground/60">
+						Lines {startLine}–{line}
+					</span>
 				</div>
 			)}
 
@@ -2886,7 +3911,7 @@ export function InlineCommentForm({
 						)}
 						title="Suggest a code change"
 					>
-						Insert suggestion
+						Suggest
 					</button>
 				)}
 
@@ -2957,6 +3982,16 @@ export function InlineCommentForm({
 	);
 }
 
+/** Parse suggestion blocks from comment body */
+function parseSuggestionBlock(body: string) {
+	const match = body.match(/```suggestion\n([\s\S]*?)```/);
+	if (!match) return null;
+	const suggestion = match[1].replace(/\n$/, "");
+	const before = body.slice(0, match.index!).trim();
+	const after = body.slice(match.index! + match[0].length).trim();
+	return { before, suggestion, after };
+}
+
 /** Renders an inline review comment with suggestion support */
 function InlineCommentDisplay({
 	comment,
@@ -2981,7 +4016,7 @@ function InlineCommentDisplay({
 	filename: string;
 	canWrite?: boolean;
 	canPersistDrafts?: boolean;
-	onEditDraft?: (draftId: string) => void;
+	onEditDraft?: (draftId: string | null) => void;
 	onDeleteDraft?: () => void;
 	onStartReply?: () => void;
 	draftReplies?: ReviewComment[];
@@ -3117,6 +4152,26 @@ function InlineCommentDisplay({
 					) : (
 						<div className="px-3 py-2 text-sm text-foreground/70">
 							<ClientMarkdown content={comment.body} />
+							{owner &&
+								repo &&
+								typeof comment.id === "number" && (
+									<div className="pt-1">
+										<ReactionDisplay
+											reactions={
+												comment.reactions ??
+												{}
+											}
+											owner={
+												owner
+											}
+											repo={repo}
+											contentType="pullRequestReviewComment"
+											contentId={
+												comment.id
+											}
+										/>
+									</div>
+								)}
 						</div>
 					)}
 					<div className="flex items-center gap-2 border-t border-border/40 px-3 py-1.5">
@@ -3205,6 +4260,1033 @@ function InlineCommentDisplay({
 				</>
 			)}
 		</div>
+	);
+}
+
+// ── Split Diff View ──
+
+interface SplitRow {
+	type: "pair" | "header";
+	left: DiffLine | null;
+	right: DiffLine | null;
+	headerContent?: string;
+	hunkIndex?: number;
+}
+
+function buildSplitRows(lines: DiffLine[]): SplitRow[] {
+	const rows: SplitRow[] = [];
+	let i = 0;
+
+	while (i < lines.length) {
+		const line = lines[i];
+
+		if (line.type === "header") {
+			rows.push({
+				type: "header",
+				left: null,
+				right: null,
+				headerContent: line.content,
+				hunkIndex: i,
+			});
+			i++;
+			continue;
+		}
+
+		if (line.type === "context") {
+			rows.push({ type: "pair", left: line, right: line });
+			i++;
+			continue;
+		}
+
+		// Collect consecutive remove/add blocks
+		const removes: DiffLine[] = [];
+		const adds: DiffLine[] = [];
+
+		while (i < lines.length && lines[i].type === "remove") {
+			removes.push(lines[i]);
+			i++;
+		}
+		while (i < lines.length && lines[i].type === "add") {
+			adds.push(lines[i]);
+			i++;
+		}
+
+		// Pair them up
+		const maxLen = Math.max(removes.length, adds.length);
+		for (let j = 0; j < maxLen; j++) {
+			rows.push({
+				type: "pair",
+				left: j < removes.length ? removes[j] : null,
+				right: j < adds.length ? adds[j] : null,
+			});
+		}
+	}
+
+	return rows;
+}
+
+function SplitDiffTable({
+	lines: _lines,
+	splitRows,
+	wordWrap,
+	canComment,
+	commentsByLine,
+	commentRange,
+	selectionRange,
+	fileHighlightData,
+	highlightLines,
+	expandedLines,
+	hunkInfos,
+	isLoadingExpand,
+	onExpandHunk,
+	onLineClick,
+	onLineMouseDown,
+	onLineHover,
+	onCloseComment,
+	commentStartLine,
+	selectedLinesContent,
+	selectedCodeForAI,
+	owner,
+	repo,
+	pullNumber,
+	headSha,
+	headBranch,
+	filename,
+	canWrite,
+	onAddContext,
+	participants,
+	hideComments = false,
+	draftRepliesByCommentId,
+	editingDraftId,
+	replyingToCommentId,
+	onEditDraft,
+	onDeleteDraft,
+	onStartReply,
+	reviewFile,
+	baseSha,
+	canPersistReviewWorkspace,
+}: {
+	lines: DiffLine[];
+	splitRows: SplitRow[];
+	wordWrap: boolean;
+	canComment: boolean;
+	commentsByLine: Map<string, ReviewComment[]>;
+	commentRange: {
+		startLine: number;
+		endLine: number;
+		side: "LEFT" | "RIGHT";
+	} | null;
+	selectionRange: { start: number; end: number; side: "LEFT" | "RIGHT" } | null;
+	fileHighlightData?: Record<string, SyntaxToken[]>;
+	highlightLines?: Set<number> | null;
+	expandedLines: Map<number, string[]>;
+	hunkInfos: {
+		index: number;
+		newStart: number;
+		newCount: number;
+		endNewLine: number;
+	}[];
+	isLoadingExpand: number | null;
+	onExpandHunk: (hunkIdx: number) => void;
+	onLineClick: (lineNum: number, side: "LEFT" | "RIGHT", shiftKey: boolean) => void;
+	onLineMouseDown: (lineNum: number, side: "LEFT" | "RIGHT") => void;
+	onLineHover: (lineNum: number) => void;
+	onCloseComment: () => void;
+	commentStartLine?: number;
+	selectedLinesContent?: string;
+	selectedCodeForAI?: string;
+	owner?: string;
+	repo?: string;
+	pullNumber?: number;
+	headSha?: string;
+	headBranch?: string;
+	filename: string;
+	canWrite: boolean;
+	onAddContext?: AddContextCallback;
+	participants?: Array<{ login: string; avatar_url: string }>;
+	hideComments?: boolean;
+	draftRepliesByCommentId: Map<number, ReviewComment[]>;
+	editingDraftId: string | null;
+	replyingToCommentId: number | null;
+	onEditDraft: (draftId: string | null) => void;
+	onDeleteDraft: () => void;
+	onStartReply: (commentId: number | null) => void;
+	reviewFile: PRReviewDiffFile | null;
+	baseSha?: string;
+	canPersistReviewWorkspace: boolean;
+}) {
+	const [splitRatio, setSplitRatio] = useState(50);
+	const splitContainerRef = useRef<HTMLDivElement>(null);
+
+	const handleSplitResize = useCallback((clientX: number) => {
+		if (!splitContainerRef.current) return;
+		const rect = splitContainerRef.current.getBoundingClientRect();
+		const ratio = ((clientX - rect.left) / rect.width) * 100;
+		setSplitRatio(Math.max(20, Math.min(80, ratio)));
+	}, []);
+
+	const getSyntaxTokens = (line: DiffLine | null) => {
+		if (!line || !fileHighlightData) return undefined;
+		if (line.type === "remove") return fileHighlightData[`R-${line.oldLineNumber}`];
+		if (line.type === "add") return fileHighlightData[`A-${line.newLineNumber}`];
+		if (line.type === "context") return fileHighlightData[`C-${line.newLineNumber}`];
+		return undefined;
+	};
+
+	const getLineNum = (line: DiffLine | null): number | undefined => {
+		if (!line) return undefined;
+		if (line.type === "remove") return line.oldLineNumber;
+		return line.newLineNumber;
+	};
+
+	// Fixed gutter width = 3px bar + 40px line number = 43px per side
+	const gutterWidth = 43;
+	const leftContentWidth = `calc(${splitRatio}% - ${gutterWidth}px)`;
+	const rightContentWidth = `calc(${100 - splitRatio}% - ${gutterWidth}px)`;
+
+	const isLineSelected = (line: DiffLine | null, side: "LEFT" | "RIGHT") => {
+		if (!selectionRange || !line) return false;
+		const ln = side === "LEFT" ? line.oldLineNumber : line.newLineNumber;
+		return (
+			ln !== undefined &&
+			ln >= selectionRange.start &&
+			ln <= selectionRange.end &&
+			side === selectionRange.side
+		);
+	};
+
+	const getInlineComments = (
+		line: DiffLine | null,
+		side: "LEFT" | "RIGHT",
+	): ReviewComment[] => {
+		if (hideComments || !line) return [];
+		const lineNum = side === "LEFT" ? line.oldLineNumber : line.newLineNumber;
+		if (lineNum === undefined) return [];
+		if (side === "LEFT") return commentsByLine.get(`LEFT-${lineNum}`) || [];
+		return commentsByLine.get(`RIGHT-${lineNum}`) || [];
+	};
+
+	const isCommentFormLine = (line: DiffLine | null, side: "LEFT" | "RIGHT") => {
+		if (!commentRange || !line) return false;
+		const lineNum = side === "LEFT" ? line.oldLineNumber : line.newLineNumber;
+		return (
+			lineNum !== undefined &&
+			lineNum === commentRange.endLine &&
+			side === commentRange.side
+		);
+	};
+
+	const renderCellContent = (line: DiffLine | null, tokens: SyntaxToken[] | undefined) => {
+		if (!line) return null;
+		const isAdd = line.type === "add";
+		const isDel = line.type === "remove";
+
+		return (
+			<div className="flex">
+				<span
+					className={cn(
+						"inline-block w-5 text-center shrink-0 select-none",
+						isAdd
+							? "text-success/50"
+							: isDel
+								? "text-destructive/50"
+								: "text-transparent",
+					)}
+				>
+					{isAdd ? "+" : isDel ? "-" : " "}
+				</span>
+				<span className="pl-1">
+					{tokens ? (
+						line.segments ? (
+							<SyntaxSegmentedContent
+								segments={line.segments}
+								tokens={tokens}
+								type={line.type}
+							/>
+						) : (
+							<span className="diff-syntax">
+								{tokens.map((t, ti) => (
+									<span
+										key={ti}
+										style={{
+											color: `light-dark(${t.lightColor}, ${t.darkColor})`,
+										}}
+									>
+										{t.text}
+									</span>
+								))}
+							</span>
+						)
+					) : line.segments ? (
+						<SegmentedContent
+							segments={line.segments}
+							type={line.type}
+						/>
+					) : (
+						<span
+							className={cn(
+								isAdd && "text-diff-add-text",
+								isDel && "text-diff-del-text",
+							)}
+						>
+							{line.content}
+						</span>
+					)}
+				</span>
+			</div>
+		);
+	};
+
+	const renderHalf = (
+		line: DiffLine | null,
+		side: "LEFT" | "RIGHT",
+		tokens: SyntaxToken[] | undefined,
+		isSelected: boolean,
+		isFirst: boolean,
+	) => {
+		const lineNum = line ? getLineNum(line) : undefined;
+		const isAdd = line?.type === "add";
+		const isDel = line?.type === "remove";
+		const isEmpty = !line;
+
+		return (
+			<>
+				{/* Gutter bar */}
+				<td
+					className={cn(
+						"w-[3px] p-0",
+						isFirst && "sticky left-0 z-[1]",
+						isEmpty
+							? ""
+							: isSelected
+								? "bg-muted-foreground"
+								: isAdd
+									? "bg-success"
+									: isDel
+										? "bg-destructive"
+										: "",
+					)}
+				/>
+				{/* Line number */}
+				<td
+					className={cn(
+						"w-10 py-0 pr-2 text-right text-[11px] font-mono select-none border-r border-border/40 relative",
+						isEmpty
+							? "diff-split-empty"
+							: isSelected
+								? "bg-muted-foreground/[0.06] text-muted-foreground"
+								: isAdd
+									? "bg-diff-add-gutter text-diff-add-gutter"
+									: isDel
+										? "bg-diff-del-gutter text-diff-del-gutter"
+										: "text-muted-foreground/30",
+					)}
+				>
+					{canComment &&
+						line &&
+						lineNum !== undefined &&
+						line.type !== "header" && (
+							<button
+								onMouseDown={(e) => {
+									e.preventDefault();
+									onLineMouseDown(
+										lineNum,
+										side,
+									);
+								}}
+								onClick={(e) =>
+									onLineClick(
+										lineNum,
+										side,
+										e.shiftKey,
+									)
+								}
+								className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 flex items-center justify-center opacity-0 group-hover/splitline:opacity-100 transition-opacity text-foreground/50 hover:text-foreground/70 cursor-pointer"
+								title="Add review comment"
+							>
+								<Plus className="w-3 h-3" />
+							</button>
+						)}
+					{lineNum ?? ""}
+				</td>
+				{/* Content */}
+				<td
+					className={cn(
+						"py-0 font-mono text-[12.5px] leading-[20px]",
+						wordWrap
+							? "whitespace-pre-wrap break-words"
+							: "whitespace-pre",
+						isEmpty
+							? "diff-split-empty"
+							: isAdd
+								? "bg-diff-add-bg"
+								: isDel
+									? "bg-diff-del-bg"
+									: "",
+						isSelected &&
+							!isEmpty &&
+							"!bg-muted-foreground/[0.08]",
+						!isFirst &&
+							"border-l border-border/30 diff-split-divider",
+					)}
+				>
+					{renderCellContent(line, tokens)}
+				</td>
+			</>
+		);
+	};
+
+	const renderInlineComment = (
+		comment: ReviewComment,
+		fallbackLineNum: number | undefined,
+		fallbackSide: "LEFT" | "RIGHT",
+	) => {
+		const commentId = Number(comment.id);
+		const childDraftReplies = Number.isFinite(commentId)
+			? draftRepliesByCommentId.get(commentId) || []
+			: [];
+		const isEditingDraft = comment.isDraft && editingDraftId === String(comment.id);
+		const isReplyFormOpen =
+			!comment.isDraft &&
+			Number.isFinite(commentId) &&
+			replyingToCommentId === commentId;
+
+		if (isEditingDraft) {
+			return (
+				<InlineCommentForm
+					owner={owner!}
+					repo={repo!}
+					pullNumber={pullNumber!}
+					headSha={headSha!}
+					baseSha={baseSha}
+					headBranch={headBranch}
+					filename={filename}
+					line={comment.line ?? fallbackLineNum ?? 0}
+					side={(comment.side as "LEFT" | "RIGHT") ?? fallbackSide}
+					startLine={comment.start_line ?? undefined}
+					selectedLinesContent={selectedLinesContent}
+					selectedCodeForAI={selectedCodeForAI}
+					onClose={() => onEditDraft(null)}
+					onAddContext={onAddContext}
+					participants={participants}
+					draftComment={comment}
+					reviewFile={reviewFile}
+				/>
+			);
+		}
+
+		return (
+			<InlineCommentDisplay
+				comment={comment}
+				owner={owner}
+				repo={repo}
+				pullNumber={pullNumber}
+				headBranch={headBranch}
+				filename={filename}
+				canWrite={canWrite}
+				canPersistDrafts={canPersistReviewWorkspace}
+				onEditDraft={onEditDraft}
+				onDeleteDraft={onDeleteDraft}
+				onStartReply={() => {
+					if (!Number.isFinite(commentId)) return;
+					onStartReply(isReplyFormOpen ? null : commentId);
+				}}
+				draftReplies={childDraftReplies}
+				replyForm={
+					isReplyFormOpen ? (
+						<InlineCommentForm
+							owner={owner!}
+							repo={repo!}
+							pullNumber={pullNumber!}
+							headSha={headSha!}
+							baseSha={baseSha}
+							headBranch={headBranch}
+							filename={filename}
+							line={comment.line ?? fallbackLineNum ?? 0}
+							side={
+								(comment.side as
+									| "LEFT"
+									| "RIGHT") ?? fallbackSide
+							}
+							startLine={undefined}
+							onClose={() => onStartReply(null)}
+							onAddContext={onAddContext}
+							participants={participants}
+							replyToCommentId={commentId}
+							reviewFile={reviewFile}
+						/>
+					) : null
+				}
+			/>
+		);
+	};
+
+	return (
+		<div ref={splitContainerRef} className="relative">
+			<table className={cn("w-full border-collapse", wordWrap && "table-fixed")}>
+				<colgroup>
+					<col className="w-[3px]" />
+					<col className="w-10" />
+					<col style={{ width: leftContentWidth }} />
+					<col className="w-[3px]" />
+					<col className="w-10" />
+					<col style={{ width: rightContentWidth }} />
+				</colgroup>
+				<tbody>
+					{splitRows.map((row, i) => {
+						if (row.type === "header") {
+							const funcMatch =
+								row.headerContent?.match(
+									/@@ .+? @@\s*(.*)/,
+								);
+							const funcName = funcMatch?.[1];
+							const expandedContent =
+								row.hunkIndex !== undefined
+									? expandedLines.get(
+											row.hunkIndex,
+										)
+									: undefined;
+							const hunkIdx = row.hunkIndex;
+
+							// Compute expandStartLine for expanded context
+							let expandStartLine = 1;
+							if (
+								expandedContent &&
+								hunkIdx !== undefined
+							) {
+								const currentHunk = hunkInfos.find(
+									(h) => h.index === hunkIdx,
+								);
+								if (currentHunk) {
+									const prevHunk = hunkInfos
+										.filter(
+											(h) =>
+												h.index <
+												hunkIdx,
+										)
+										.pop();
+									expandStartLine = prevHunk
+										? prevHunk.endNewLine +
+											1
+										: 1;
+								}
+							}
+
+							return (
+								<React.Fragment key={`h-${i}`}>
+									{expandedContent &&
+										expandedContent.length >
+											0 &&
+										expandedContent.map(
+											(
+												text,
+												ei,
+											) => (
+												<tr
+													key={`exp-${i}-${ei}`}
+													className="diff-expanded-context"
+												>
+													<td
+														colSpan={
+															6
+														}
+														className={cn(
+															"py-0 font-mono text-[12.5px] leading-[20px]",
+															wordWrap
+																? "whitespace-pre-wrap break-words"
+																: "whitespace-pre",
+														)}
+													>
+														<div className="flex">
+															<span className="inline-block w-10 text-right pr-2 shrink-0 text-[11px] text-muted-foreground/25 select-none">
+																{expandStartLine +
+																	ei}
+															</span>
+															<span className="pl-1 text-muted-foreground/60">
+																{
+																	text
+																}
+															</span>
+														</div>
+													</td>
+												</tr>
+											),
+										)}
+									<tr className="diff-hunk-header">
+										<td
+											colSpan={6}
+											className="py-1.5 px-3 text-[11px] font-mono bg-info/[0.04] dark:bg-info/[0.06]"
+										>
+											<div className="flex items-center gap-2">
+												{hunkIdx !==
+													undefined &&
+													!expandedContent && (
+														<button
+															onClick={() =>
+																onExpandHunk(
+																	hunkIdx,
+																)
+															}
+															disabled={
+																isLoadingExpand ===
+																hunkIdx
+															}
+															className="flex items-center justify-center cursor-pointer text-info/40 hover:text-info/70 transition-colors disabled:opacity-40"
+															title="Expand context"
+														>
+															{isLoadingExpand ===
+															hunkIdx ? (
+																<Loader2 className="w-3.5 h-3.5 animate-spin" />
+															) : (
+																<UnfoldVertical className="w-3.5 h-3.5" />
+															)}
+														</button>
+													)}
+												<span className="text-info/60 dark:text-info/50">
+													{
+														row.headerContent?.match(
+															/@@ .+? @@/,
+														)?.[0]
+													}
+												</span>
+												{funcName && (
+													<span className="text-muted-foreground/50">
+														{
+															funcName
+														}
+													</span>
+												)}
+											</div>
+										</td>
+									</tr>
+								</React.Fragment>
+							);
+						}
+
+						// Pair row
+						const leftTokens = getSyntaxTokens(row.left);
+						const rightTokens = getSyntaxTokens(row.right);
+						const leftSelected = isLineSelected(
+							row.left,
+							"LEFT",
+						);
+						const rightSelected = isLineSelected(
+							row.right,
+							"RIGHT",
+						);
+						const leftLineNum = row.left
+							? getLineNum(row.left)
+							: undefined;
+						const rightLineNum = row.right
+							? getLineNum(row.right)
+							: undefined;
+
+						// For context lines shown on both sides, LEFT side uses the context line's line number for display
+						const leftSide: "LEFT" | "RIGHT" =
+							row.left?.type === "remove"
+								? "LEFT"
+								: row.left?.type === "context"
+									? "LEFT"
+									: "RIGHT";
+						const rightSide: "LEFT" | "RIGHT" = "RIGHT";
+
+						// Check for inline comments on each side
+						const leftComments = row.left
+							? getInlineComments(row.left, leftSide)
+							: [];
+						const rightComments = row.right
+							? getInlineComments(row.right, rightSide)
+							: [];
+
+						const leftIsCommentForm = row.left
+							? isCommentFormLine(row.left, leftSide)
+							: false;
+						const rightIsCommentForm = row.right
+							? isCommentFormLine(row.right, rightSide)
+							: false;
+
+						const isRowHighlighted =
+							highlightLines != null &&
+							((rightLineNum !== undefined &&
+								highlightLines.has(rightLineNum)) ||
+								(leftLineNum !== undefined &&
+									highlightLines.has(
+										leftLineNum,
+									)));
+
+						return (
+							<React.Fragment key={`p-${i}`}>
+								<tr
+									data-line={
+										rightLineNum ??
+										leftLineNum
+									}
+									className={cn(
+										"group/splitline hover:brightness-95 dark:hover:brightness-110 transition-[filter] duration-75",
+										isRowHighlighted &&
+											"!bg-warning/10",
+									)}
+									onMouseEnter={() => {
+										if (
+											leftLineNum !==
+											undefined
+										)
+											onLineHover(
+												leftLineNum,
+											);
+										if (
+											rightLineNum !==
+											undefined
+										)
+											onLineHover(
+												rightLineNum,
+											);
+									}}
+								>
+									{renderHalf(
+										row.left,
+										leftSide,
+										leftTokens,
+										leftSelected,
+										true,
+									)}
+									{renderHalf(
+										row.right,
+										rightSide,
+										rightTokens,
+										rightSelected,
+										false,
+									)}
+								</tr>
+
+								{/* Inline review comments - left side (shown on left half only) */}
+								{leftComments.map((comment) => (
+									<tr
+										key={`lrc-${comment.id}`}
+									>
+										<td
+											colSpan={3}
+											className="p-0 align-top"
+										>
+											{renderInlineComment(
+												comment,
+												leftLineNum,
+												leftSide,
+											)}
+										</td>
+										<td
+											colSpan={3}
+											className="p-0"
+										/>
+									</tr>
+								))}
+
+								{/* Inline review comments - right side (shown on right half only) */}
+								{rightComments.map((comment) => (
+									<tr
+										key={`rrc-${comment.id}`}
+									>
+										<td
+											colSpan={3}
+											className="p-0"
+										/>
+										<td
+											colSpan={3}
+											className="p-0 align-top"
+										>
+											{renderInlineComment(
+												comment,
+												rightLineNum,
+												rightSide,
+											)}
+										</td>
+									</tr>
+								))}
+
+								{/* Comment form */}
+								{(leftIsCommentForm ||
+									rightIsCommentForm) &&
+									commentRange && (
+										<tr>
+											{commentRange.side ===
+											"LEFT" ? (
+												<>
+													<td
+														colSpan={
+															3
+														}
+														className="p-0 align-top"
+													>
+														<InlineCommentForm
+															owner={
+																owner!
+															}
+															repo={
+																repo!
+															}
+															pullNumber={
+																pullNumber!
+															}
+															headSha={
+																headSha!
+															}
+															baseSha={
+																baseSha
+															}
+															headBranch={
+																headBranch
+															}
+															filename={
+																filename
+															}
+															line={
+																commentRange.endLine
+															}
+															side={
+																commentRange.side
+															}
+															startLine={
+																commentStartLine
+															}
+															selectedLinesContent={
+																selectedLinesContent
+															}
+															selectedCodeForAI={
+																selectedCodeForAI
+															}
+															onClose={
+																onCloseComment
+															}
+															onAddContext={
+																onAddContext
+															}
+															participants={
+																participants
+															}
+															reviewFile={
+																reviewFile
+															}
+														/>
+													</td>
+													<td
+														colSpan={
+															3
+														}
+														className="p-0"
+													/>
+												</>
+											) : (
+												<>
+													<td
+														colSpan={
+															3
+														}
+														className="p-0"
+													/>
+													<td
+														colSpan={
+															3
+														}
+														className="p-0 align-top"
+													>
+														<InlineCommentForm
+															owner={
+																owner!
+															}
+															repo={
+																repo!
+															}
+															pullNumber={
+																pullNumber!
+															}
+															headSha={
+																headSha!
+															}
+															baseSha={
+																baseSha
+															}
+															headBranch={
+																headBranch
+															}
+															filename={
+																filename
+															}
+															line={
+																commentRange.endLine
+															}
+															side={
+																commentRange.side
+															}
+															startLine={
+																commentStartLine
+															}
+															selectedLinesContent={
+																selectedLinesContent
+															}
+															selectedCodeForAI={
+																selectedCodeForAI
+															}
+															onClose={
+																onCloseComment
+															}
+															onAddContext={
+																onAddContext
+															}
+															participants={
+																participants
+															}
+															reviewFile={
+																reviewFile
+															}
+														/>
+													</td>
+												</>
+											)}
+										</tr>
+									)}
+							</React.Fragment>
+						);
+					})}
+				</tbody>
+			</table>
+
+			{/* Resize handle overlay */}
+			<div
+				className="absolute top-0 bottom-0 z-10"
+				style={{
+					left: `${splitRatio}%`,
+					transform: "translateX(-50%)",
+				}}
+			>
+				<ResizeHandle
+					onResize={handleSplitResize}
+					onDoubleClick={() => setSplitRatio(50)}
+				/>
+			</div>
+		</div>
+	);
+}
+
+export function SegmentedContent({
+	segments,
+	type,
+}: {
+	segments: DiffSegment[];
+	type: "add" | "remove" | "context" | "header";
+}) {
+	return (
+		<>
+			{segments.map((seg, i) => (
+				<span
+					key={i}
+					className={cn(
+						type === "add" && "text-diff-add-text",
+						type === "remove" && "text-diff-del-text",
+						seg.highlight &&
+							type === "add" &&
+							"bg-diff-word-add rounded-[2px] px-[1px] -mx-[1px]",
+						seg.highlight &&
+							type === "remove" &&
+							"bg-diff-word-del rounded-[2px] px-[1px] -mx-[1px]",
+					)}
+				>
+					{seg.text}
+				</span>
+			))}
+		</>
+	);
+}
+
+/** Merges syntax highlighting tokens with word-diff segments.
+ *  Segments provide the background highlight (changed words), tokens provide text color. */
+export function SyntaxSegmentedContent({
+	segments,
+	tokens,
+	type,
+}: {
+	segments: DiffSegment[];
+	tokens: SyntaxToken[];
+	type: "add" | "remove" | "context" | "header";
+}) {
+	// Flatten segments and tokens by character position to merge them.
+	// Walk through both simultaneously, splitting tokens at segment boundaries.
+	const result: {
+		text: string;
+		highlight: boolean;
+		lightColor: string;
+		darkColor: string;
+	}[] = [];
+
+	let segIdx = 0;
+	let segCharOffset = 0; // chars consumed in current segment
+	let tokIdx = 0;
+	let tokCharOffset = 0; // chars consumed in current token
+
+	while (segIdx < segments.length && tokIdx < tokens.length) {
+		const seg = segments[segIdx];
+		const tok = tokens[tokIdx];
+		const segRemaining = seg.text.length - segCharOffset;
+		const tokRemaining = tok.text.length - tokCharOffset;
+		const take = Math.min(segRemaining, tokRemaining);
+
+		if (take > 0) {
+			result.push({
+				text: tok.text.slice(tokCharOffset, tokCharOffset + take),
+				highlight: seg.highlight,
+				lightColor: tok.lightColor,
+				darkColor: tok.darkColor,
+			});
+		}
+
+		segCharOffset += take;
+		tokCharOffset += take;
+		if (segCharOffset >= seg.text.length) {
+			segIdx++;
+			segCharOffset = 0;
+		}
+		if (tokCharOffset >= tok.text.length) {
+			tokIdx++;
+			tokCharOffset = 0;
+		}
+	}
+
+	// Any remaining tokens (if segments ran out)
+	while (tokIdx < tokens.length) {
+		const tok = tokens[tokIdx];
+		const text = tok.text.slice(tokCharOffset);
+		if (text) {
+			result.push({
+				text,
+				highlight: false,
+				lightColor: tok.lightColor,
+				darkColor: tok.darkColor,
+			});
+		}
+		tokIdx++;
+		tokCharOffset = 0;
+	}
+
+	return (
+		<span className="diff-syntax">
+			{result.map((r, i) => (
+				<span
+					key={i}
+					className={cn(
+						r.highlight &&
+							type === "add" &&
+							"bg-diff-word-add rounded-[2px] px-[1px] -mx-[1px]",
+						r.highlight &&
+							type === "remove" &&
+							"bg-diff-word-del rounded-[2px] px-[1px] -mx-[1px]",
+					)}
+					style={{
+						color: `light-dark(${r.lightColor}, ${r.darkColor})`,
+					}}
+				>
+					{r.text}
+				</span>
+			))}
+		</span>
 	);
 }
 
@@ -3766,6 +5848,7 @@ function SidebarReviews({
 	const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
 		() => new Set(threadsByFile.keys()),
 	);
+	const [isPending, startTransition] = useTransition();
 
 	const toggleFile = (path: string) => {
 		setExpandedFiles((prev) => {
@@ -3776,15 +5859,34 @@ function SidebarReviews({
 		});
 	};
 
-	const threadGroups = files
+	const handleResolve = (threadId: string, resolve: boolean) => {
+		if (!owner || !repo || !pullNumber) return;
+		startTransition(async () => {
+			if (resolve) {
+				await resolveReviewThread(threadId, owner, repo, pullNumber);
+			} else {
+				await unresolveReviewThread(threadId, owner, repo, pullNumber);
+			}
+			emit({
+				type: resolve ? "pr:thread-resolved" : "pr:thread-unresolved",
+				owner,
+				repo,
+				number: pullNumber,
+			});
+			router.refresh();
+		});
+	};
+
+	// Files that have threads
+	const filesWithThreads = files
 		.map((f, i) => ({
-			filePath: f.filename,
-			fileIndex: i,
+			file: f,
+			index: i,
 			threads: threadsByFile.get(f.filename) || [],
 		}))
-		.filter((group) => group.threads.length > 0);
+		.filter((f) => f.threads.length > 0);
 
-	if (threadGroups.length === 0) {
+	if (filesWithThreads.length === 0) {
 		return (
 			<div className="px-3 py-8 text-center">
 				<MessageSquare className="w-4 h-4 mx-auto mb-2 text-muted-foreground/30" />
@@ -3822,30 +5924,184 @@ function SidebarReviews({
 				</div>
 			)}
 
-			<ReviewThreadList
-				groups={threadGroups}
-				variant="sidebar"
-				isFileExpanded={(path) => expandedFiles.has(path)}
-				onToggleFile={toggleFile}
-				owner={owner}
-				repo={repo}
-				pullNumber={pullNumber}
-				onNavigateToFile={onNavigateToFile}
-				onThreadMutated={(_, resolved) => {
-					if (!owner || !repo || !pullNumber) return;
-					emit({
-						type: resolved
-							? "pr:thread-resolved"
-							: "pr:thread-unresolved",
-						owner,
-						repo,
-						number: pullNumber,
-					});
-					router.refresh();
-				}}
-			/>
+			{/* Per-file threads */}
+			{filesWithThreads.map(({ file, index, threads }) => {
+				const name = file.filename.split("/").pop() || file.filename;
+				const isExpanded = expandedFiles.has(file.filename);
+				const unresolvedCount = threads.filter((t) => !t.isResolved).length;
+
+				return (
+					<div key={file.filename}>
+						<button
+							onClick={() => {
+								toggleFile(file.filename);
+								onNavigateToFile(index, null);
+							}}
+							className="w-full flex items-center gap-1.5 px-3 py-1.5 text-left hover:bg-muted/50 transition-colors cursor-pointer"
+						>
+							<ChevronDown
+								className={cn(
+									"w-3 h-3 shrink-0 text-muted-foreground/50 transition-transform",
+									!isExpanded && "-rotate-90",
+								)}
+							/>
+							<span className="text-[11px] font-mono text-foreground/80 truncate flex-1 min-w-0">
+								{name}
+							</span>
+							{unresolvedCount > 0 && (
+								<span className="text-[9px] px-1 py-px rounded-full bg-warning/15 text-warning tabular-nums shrink-0">
+									{unresolvedCount}
+								</span>
+							)}
+							<span className="text-[9px] text-muted-foreground/50 tabular-nums shrink-0">
+								{threads.length}
+							</span>
+						</button>
+
+						{isExpanded && (
+							<div className="pl-3 pr-2 pb-1 space-y-1">
+								{threads.map((thread) => {
+									const firstComment =
+										thread.comments[0];
+									if (!firstComment)
+										return null;
+
+									return (
+										<div
+											key={
+												thread.id
+											}
+											onClick={() =>
+												onNavigateToFile(
+													index,
+													thread.line,
+												)
+											}
+											className={cn(
+												"rounded-md border text-left transition-colors cursor-pointer hover:bg-muted/50",
+												thread.isResolved
+													? "border-border/40 opacity-50"
+													: "border-border",
+											)}
+										>
+											{/* Thread header */}
+											<div className="flex items-center gap-1 px-2 py-1">
+												{thread.isResolved ? (
+													<CheckCircle2 className="w-3 h-3 shrink-0 text-success/60" />
+												) : (
+													<Circle className="w-3 h-3 shrink-0 text-warning/60" />
+												)}
+												{firstComment.author && (
+													<span className="text-[10px] font-medium text-foreground/60 truncate">
+														{
+															firstComment
+																.author
+																.login
+														}
+													</span>
+												)}
+												{thread.line && (
+													<span className="text-[9px] font-mono text-muted-foreground ml-auto shrink-0">
+														L
+														{
+															thread.line
+														}
+													</span>
+												)}
+											</div>
+											{/* Comment body preview */}
+											<div className="px-2 pb-1.5">
+												<p className="text-[10px] text-muted-foreground/70 line-clamp-2 whitespace-pre-wrap break-words">
+													{
+														firstComment.body
+													}
+												</p>
+												{thread
+													.comments
+													.length >
+													1 && (
+													<span className="text-[9px] text-muted-foreground/50 mt-0.5 block">
+														+
+														{thread
+															.comments
+															.length -
+															1}{" "}
+														more
+													</span>
+												)}
+											</div>
+											{/* Resolve/unresolve toggle */}
+											{owner &&
+												repo &&
+												pullNumber && (
+													<div className="px-2 pb-1.5">
+														<button
+															onClick={(
+																e,
+															) => {
+																e.stopPropagation();
+																handleResolve(
+																	thread.id,
+																	!thread.isResolved,
+																);
+															}}
+															disabled={
+																isPending
+															}
+															className={cn(
+																"text-[9px] font-mono transition-colors cursor-pointer disabled:opacity-40",
+																thread.isResolved
+																	? "text-muted-foreground/50 hover:text-warning"
+																	: "text-muted-foreground/50 hover:text-success",
+															)}
+														>
+															{thread.isResolved
+																? "Unresolve"
+																: "Resolve"}
+														</button>
+													</div>
+												)}
+										</div>
+									);
+								})}
+							</div>
+						)}
+					</div>
+				);
+			})}
 		</div>
 	);
+}
+
+function ReviewStateBadge({ state }: { state: string }) {
+	switch (state) {
+		case "APPROVED":
+			return (
+				<span className="text-[9px] px-1.5 py-px rounded-full bg-success/10 text-success font-medium">
+					Approved
+				</span>
+			);
+		case "CHANGES_REQUESTED":
+			return (
+				<span className="text-[9px] px-1.5 py-px rounded-full bg-warning/10 text-warning font-medium">
+					Changes
+				</span>
+			);
+		case "COMMENTED":
+			return (
+				<span className="text-[9px] px-1.5 py-px rounded-full bg-info/10 text-info font-medium">
+					Commented
+				</span>
+			);
+		case "DISMISSED":
+			return (
+				<span className="text-[9px] px-1.5 py-px rounded-full bg-muted-foreground/10 text-muted-foreground/60 font-medium">
+					Dismissed
+				</span>
+			);
+		default:
+			return null;
+	}
 }
 
 interface LineDiffEntry {
@@ -3862,7 +6118,9 @@ function computeLineDiff(oldText: string, newText: string): LineDiffEntry[] {
 	const m = newLines.length;
 
 	// LCS via DP
-	const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+	const dp: number[][] = Array.from({ length: n + 1 }, () =>
+		Array.from({ length: m + 1 }, () => 0),
+	);
 	for (let i = 1; i <= n; i++) {
 		for (let j = 1; j <= m; j++) {
 			dp[i][j] =

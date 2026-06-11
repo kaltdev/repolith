@@ -63,7 +63,7 @@ const nextConfig: NextConfig = {
 				protocol: "https",
 				hostname: "repository-images.githubusercontent.com",
 			},
-			{ protocol: "https", hostname: "repolith.my.id" },
+			{ protocol: "https", hostname: "repolith.dev" },
 			{ protocol: "https", hostname: "images.better-auth.com" },
 		],
 	},

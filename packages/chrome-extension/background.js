@@ -1,4 +1,4 @@
-const DEFAULT_HOST = "https://repolith.my.id";
+const DEFAULT_HOST = "https://repolith.dev";
 
 // Track tabs on the logout page so we can avoid redirecting github.com/
 // after logout (declarativeNetRequest cancels the request mid-flight

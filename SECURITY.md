@@ -6,7 +6,7 @@ If you discover a security vulnerability in Repolith, please report it responsib
 
 **Do not open a public GitHub issue.**
 
-Instead, email us at **security@repolith.my.id** with:
+Instead, email us at **security@repolith.dev** with:
 
 - A description of the vulnerability
 - Steps to reproduce

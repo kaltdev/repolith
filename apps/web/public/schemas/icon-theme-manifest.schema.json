@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://repolith.my.id/schemas/icon-theme-manifest.schema.json",
+	"$id": "https://repolith.dev/schemas/icon-theme-manifest.schema.json",
 	"title": "Repolith Icon Theme Manifest",
 	"description": "Schema for the repolith-extension.json manifest file when publishing an icon theme to the Repolith marketplace.",
 	"type": "object",
@@ -48,7 +48,7 @@
 	},
 	"examples": [
 		{
-			"$schema": "https://repolith.my.id/schemas/icon-theme-manifest.schema.json",
+			"$schema": "https://repolith.dev/schemas/icon-theme-manifest.schema.json",
 			"name": "My Icon Theme",
 			"description": "A beautiful file icon theme for Repolith",
 			"version": "1.0.0",

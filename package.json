@@ -10,7 +10,7 @@
 		"github",
 		"pull-requests"
 	],
-	"homepage": "https://repolith.my.id",
+	"homepage": "https://repolith.dev",
 	"bugs": {
 		"url": "https://github.com/kaltdev/repolith/issues"
 	},
@@ -38,11 +38,11 @@
 		"prepare": "simple-git-hooks"
 	},
 	"devDependencies": {
-		"@types/bun": "^1.3.13",
-		"@types/node": "^25.6.0",
+		"@types/bun": "^1.3.14",
+		"@types/node": "^25.9.3",
 		"lint-staged": "^16.4.0",
 		"oxfmt": "^0.34.0",
-		"oxlint": "^1.61.0",
+		"oxlint": "^1.69.0",
 		"prisma": "^7.8.0",
 		"simple-git-hooks": "^2.13.1",
 		"typescript": "^5.9.3"

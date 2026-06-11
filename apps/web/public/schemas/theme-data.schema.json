@@ -1,6 +1,6 @@
 {
 	"$schema": "http://json-schema.org/draft-07/schema#",
-	"$id": "https://repolith.my.id/schemas/theme-data.schema.json",
+	"$id": "https://repolith.dev/schemas/theme-data.schema.json",
 	"title": "Repolith Color Theme Data",
 	"description": "Schema for the color theme data file referenced by the \"main\" field in repolith-extension.json. Defines dark and light variants with HSL color tokens.",
 	"type": "object",
@@ -220,7 +220,7 @@
 	},
 	"examples": [
 		{
-			"$schema": "https://repolith.my.id/schemas/theme-data.schema.json",
+			"$schema": "https://repolith.dev/schemas/theme-data.schema.json",
 			"dark": {
 				"accentPreview": "#7c3aed",
 				"bgPreview": "#09090b",

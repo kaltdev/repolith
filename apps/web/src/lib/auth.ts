@@ -49,7 +49,7 @@ export const auth = betterAuth({
 		admin(),
 		patSignIn(),
 		...(process.env.VERCEL
-			? [oAuthProxy({ productionURL: "https://www.repolith.my.id" })]
+			? [oAuthProxy({ productionURL: "https://www.repolith.dev" })]
 			: []),
 	],
 	user: {
@@ -105,11 +105,11 @@ export const auth = betterAuth({
 	},
 	trustedOrigins: [
 		// Production
-		"https://www.repolith.my.id",
+		"https://www.repolith.dev",
 		// Vercel preview
 		"https://repolith-*-repolith.vercel.app",
 		// Beta site
-		"https://beta.repolith.my.id",
+		"https://beta.repolith.dev",
 	],
 	advanced: {
 		ipAddress: {

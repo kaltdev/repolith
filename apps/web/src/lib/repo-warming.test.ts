@@ -19,7 +19,7 @@ describe("repo-warming", () => {
 	it("extracts repo names from absolute urls", () => {
 		expect(
 			repoFullNameFromInternalUrl(
-				"https://www.repolith.my.id/vercel/next.js?tab=code",
+				"https://www.repolith.dev/vercel/next.js?tab=code",
 			),
 		).toBe("vercel/next.js");
 	});

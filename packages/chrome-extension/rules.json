@@ -5,7 +5,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2/pull/\\3"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2/pull/\\3"
 			}
 		},
 		"condition": {
@@ -19,7 +19,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2/commit/\\3"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2/commit/\\3"
 			}
 		},
 		"condition": {
@@ -33,7 +33,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2/actions/\\3"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2/actions/\\3"
 			}
 		},
 		"condition": {
@@ -47,7 +47,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2"
 			}
 		},
 		"condition": {
@@ -61,7 +61,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2/\\3"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2/\\3"
 			}
 		},
 		"condition": {
@@ -75,7 +75,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/\\1/\\2\\3"
+				"regexSubstitution": "https://repolith.dev/\\1/\\2\\3"
 			}
 		},
 		"condition": {
@@ -260,7 +260,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/notifications"
+				"regexSubstitution": "https://repolith.dev/notifications"
 			}
 		},
 		"condition": {
@@ -273,7 +273,7 @@
 		"priority": 4,
 		"action": {
 			"type": "redirect",
-			"redirect": { "regexSubstitution": "https://repolith.my.id/trending" }
+			"redirect": { "regexSubstitution": "https://repolith.dev/trending" }
 		},
 		"condition": {
 			"regexFilter": "^https://github\\.com/trending",
@@ -285,7 +285,7 @@
 		"priority": 4,
 		"action": {
 			"type": "redirect",
-			"redirect": { "regexSubstitution": "https://repolith.my.id/issues" }
+			"redirect": { "regexSubstitution": "https://repolith.dev/issues" }
 		},
 		"condition": {
 			"regexFilter": "^https://github\\.com/issues$",
@@ -297,7 +297,7 @@
 		"priority": 4,
 		"action": {
 			"type": "redirect",
-			"redirect": { "regexSubstitution": "https://repolith.my.id/prs" }
+			"redirect": { "regexSubstitution": "https://repolith.dev/prs" }
 		},
 		"condition": {
 			"regexFilter": "^https://github\\.com/pulls$",
@@ -309,7 +309,7 @@
 		"priority": 4,
 		"action": {
 			"type": "redirect",
-			"redirect": { "regexSubstitution": "https://repolith.my.id/stars" }
+			"redirect": { "regexSubstitution": "https://repolith.dev/stars" }
 		},
 		"condition": {
 			"regexFilter": "^https://github\\.com/stars/?(?:\\?.*)?$",
@@ -322,7 +322,7 @@
 		"action": {
 			"type": "redirect",
 			"redirect": {
-				"regexSubstitution": "https://repolith.my.id/stars/\\1"
+				"regexSubstitution": "https://repolith.dev/stars/\\1"
 			}
 		},
 		"condition": {
